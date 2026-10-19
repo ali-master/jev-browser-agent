@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en" data-motion="on">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f5f2" />
+    <meta
+      name="description"
+      content="Jev is a Bun-native browser agent that turns a goal into typed decisions, visible actions, and verified progress. Open source. Your models. Your control."
+    />
+    <meta property="og:title" content="Jev — A browser that chooses." />
+    <meta
+      property="og:description"
+      content="A little intention. A clear next move. Meet the browser agent built on typed decisions."
+    />
+    <meta property="og:image" content="./social-preview.png" />
+    <meta property="og:type" content="website" />
+    <title>Jev — A browser that chooses.</title>
+    <link rel="icon" href="./logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./landing.css" />
+    <script src="./landing.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="#main" aria-label="Jev home">
+        <img src="./logo.svg" width="38" height="38" alt="" />
+        <span>Jev<span class="brand-descriptor">Browser Agent</span></span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#idea">The idea</a>
+        <a href="#build">For developers</a>
+        <a
+          class="nav-github"
+          href="https://github.com/ali-master/jev-browser-agent"
+          >GitHub <i class="icon arrow-up-right" aria-hidden="true"></i
+        ></a>
+      </nav>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="hero section-width" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">
+            <span class="signal" aria-hidden="true"></span> SMALL DECISIONS.
+            REAL PROGRESS.
+          </p>
+          <h1 id="hero-title">A browser<br />that <em>chooses.</em></h1>
+          <p class="hero-description">
+            A little intention. A clear next move.<br />Give Jev a goal, and
+            watch it find its way through the web.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-dark" href="#build"
+              >Meet your next agent
+              <i class="icon arrow-right" aria-hidden="true"></i
+            ></a>
+            <a class="watch-link" href="#demo" data-watch
+              ><i class="icon play" aria-hidden="true"></i> See it in motion</a
+            >
+          </div>
+          <div class="hero-note">
+            <span class="tiny-label">MADE OF</span> Typed decisions. Observable
+            actions.
+          </div>
+        </div>
+
+        <figure
+          class="demo"
+          id="demo"
+          data-step="0"
+          aria-labelledby="demo-caption"
+        >
+          <div class="goal-note">
+            <span class="goal-marker"
+              ><img src="./logo.svg" width="30" height="30" alt=""
+            /></span>
+            <div>
+              <span class="tiny-label">ONE GOAL. LET'S GO.</span>
+              <p>
+                Find a Design stay in Lisbon with free cancellation. Open Casa
+                Flora.
+              </p>
+            </div>
+          </div>
+          <div class="browser-shell">
+            <div class="browser-chrome">
+              <span class="window-dots" aria-hidden="true"
+                ><b></b><b></b><b></b
+              ></span>
+              <span class="browser-url" data-demo-url
+                >forma.example / stays</span
+              >
+              <span class="browser-mode">DEMO</span>
+            </div>
+            <div class="browser-content" aria-hidden="true">
+              <div class="mini-nav">
+                <span class="forma-wordmark">forma.</span
+                ><span>PLACES WITH CHARACTER</span>
+              </div>
+              <div class="stay-search">
+                <p class="mini-eyebrow">THE SLOWER WAY TO STAY</p>
+                <h2>Find your somewhere.</h2>
+                <div class="mini-search target" data-target="destination">
+                  <span class="target-index">04</span
+                  ><span data-destination>Where would you like to go?</span
+                  ><span class="mini-search-button"
+                    ><i class="icon arrow-right"></i
+                  ></span>
+                </div>
+                <div class="mini-filters">
+                  <span class="mini-select target" data-target="category"
+                    ><span class="target-index">06</span
+                    ><span data-category>All stays</span
+                    ><i class="icon select-chevron"></i
+                  ></span>
+                  <span class="mini-checkbox target" data-target="cancellation"
+                    ><span class="target-index">07</span
+                    ><span class="checkbox-mark"
+                      ><i class="icon check"></i
+                    ></span>
+                    Free cancellation</span
+                  >
+                </div>
+                <div class="mini-results">
+                  <div class="stay-row stay-flora target" data-target="stay">
+                    <div>
+                      <span class="stay-location">LISBON · DESIGN</span>
+                      <h3>Casa Flora</h3>
+                      <p>Free cancellation · 2 guests</p>
+                    </div>
+                    <span class="stay-link"
+                      >View stay <i class="icon arrow-up-right"></i></span
+                    ><span class="target-index">08</span>
+                  </div>
+                  <div class="stay-row stay-other">
+                    <div>
+                      <span class="stay-location">COPENHAGEN · DESIGN</span>
+                      <h3>The Glasshouse</h3>
+                      <p>Free cancellation · 2 guests</p>
+                    </div>
+                    <span class="stay-price">€210 <small>/ night</small></span>
+                  </div>
+                </div>
+                <div class="stay-detail" hidden>
+                  <span class="stay-location">LISBON, PORTUGAL</span>
+                  <h3>Casa Flora</h3>
+                  <p>
+                    A considered little stay.<br />Exactly where you wanted to
+                    be.
+                  </p>
+                  <div class="detail-tags">
+                    <span>Design</span><span>Free cancellation</span>
+                  </div>
+                  <span class="detail-price">€145 <small>/ night</small></span>
+                </div>
+              </div>
+            </div>
+            <div class="browser-bottom">
+              <span data-browser-status>Reading the page</span
+              ><span class="browser-count" data-browser-count
+                >10 visible elements</span
+              >
+            </div>
+          </div>
+          <div class="decision-ticket" aria-hidden="true">
+            <div class="ticket-icon"><i class="icon cursor"></i></div>
+            <div>
+              <span class="tiny-label">THE NEXT MOVE</span
+              ><strong data-operation>OBSERVE</strong>
+            </div>
+            <span class="ticket-target" data-target-label
+              >page → possibilities</span
+            >
+          </div>
+          <div class="demo-controls">
+            <button
+              class="demo-play icon-button"
+              type="button"
+              aria-label="Play walkthrough"
+              data-demo-play
+              disabled
+            >
+              <i class="icon play" aria-hidden="true"></i>
+            </button>
+            <div class="demo-steps" role="group" aria-label="Walkthrough steps">
+              <button
+                type="button"
+                aria-label="Step 1: Observe the page"
+                aria-pressed="true"
+                data-step-button="0"
+                disabled
+              >
+                <span>01</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Step 2: Type Lisbon"
+                aria-pressed="false"
+                data-step-button="1"
+                disabled
+              >
+                <span>02</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Step 3: Select Design"
+                aria-pressed="false"
+                data-step-button="2"
+                disabled
+              >
+                <span>03</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Step 4: Choose free cancellation"
+                aria-pressed="false"
+                data-step-button="3"
+                disabled
+              >
+                <span>04</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Step 5: Open Casa Flora"
+                aria-pressed="false"
+                data-step-button="4"
+                disabled
+              >
+                <span>05</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Step 6: Verify completion"
+                aria-pressed="false"
+                data-step-button="5"
+                disabled
+              >
+                <span>06</span>
+              </button>
+            </div>
+            <span class="demo-counter" data-step-count>01 / 06</span>
+          </div>
+          <figcaption id="demo-caption">
+            <span class="demo-caption-label">SIMULATED WALKTHROUGH</span
+            ><span
+              class="demo-live"
+              aria-live="polite"
+              aria-atomic="true"
+              data-step-description
+              >Observe the page. Find the available actions.</span
+            >
+          </figcaption>
+          <noscript
+            ><p class="demo-noscript">
+              Enable JavaScript to play the walkthrough. The rest of this page
+              works without it.
+            </p></noscript
+          >
+        </figure>
+      </section>
+
+      <div class="foundation section-width">
+        <span>Built with intention.</span>
+        <div>
+          <span>Bun native</span><span>TypeScript</span><span>Your models</span
+          ><span>Open source · MIT</span>
+        </div>
+        <span class="edition">JEV / 001</span>
+      </div>
+
+      <section
+        class="idea section-width"
+        id="idea"
+        aria-labelledby="idea-title"
+      >
+        <div class="section-intro reveal">
+          <p class="eyebrow">01 — THE IDEA</p>
+          <h2 id="idea-title">
+            The whole web.<br /><span class="muted">One next move.</span>
+          </h2>
+          <p>
+            A page is a set of possibilities. Jev gives each one a name, chooses
+            an action, and checks what actually happened.
+          </p>
+        </div>
+        <div class="loop-grid">
+          <article class="loop-item reveal">
+            <span class="loop-number">01 <span>OBSERVE</span></span>
+            <h3>See what's there.</h3>
+            <p>
+              Visible controls become an indexed action space. The model works
+              with the page in front of it.
+            </p>
+            <div class="loop-detail">
+              <span class="element-id">[04]</span><span>searchbox</span
+              ><strong>Destination</strong>
+            </div>
+          </article>
+          <article class="loop-item reveal">
+            <span class="loop-number">02 <span>CHOOSE</span></span>
+            <h3>Make it specific.</h3>
+            <p>
+              One typed decision pairs an operation with a compatible target.
+              Every choice has a place to go.
+            </p>
+            <div class="loop-detail">
+              <span class="code-accent">TYPE_TEXT</span
+              ><span class="loop-arrow"
+                ><i class="icon arrow-right" aria-hidden="true"></i></span
+              ><span class="element-id">[04]</span>
+            </div>
+          </article>
+          <article class="loop-item reveal">
+            <span class="loop-number">03 <span>ACT</span></span>
+            <h3>A real next step.</h3>
+            <p>
+              The browser clicks, types, selects and scrolls. The inspector
+              makes the journey visible as it unfolds.
+            </p>
+            <div class="loop-detail">
+              <span class="typing-word"
+                >Lisbon<span class="text-caret" aria-hidden="true"></span></span
+              ><span class="detail-note">FIELD UPDATED</span>
+            </div>
+          </article>
+          <article class="loop-item reveal">
+            <span class="loop-number">04 <span>VERIFY</span></span>
+            <h3>Check the result.</h3>
+            <p>
+              Observed evidence must satisfy the checklist. A final review
+              checks the original goal before completion.
+            </p>
+            <div class="loop-detail verified-detail">
+              <i class="icon check" aria-hidden="true"></i
+              ><span>Goal reviewed</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="clarity" aria-labelledby="clarity-title">
+        <div class="section-width clarity-layout">
+          <div class="clarity-copy reveal">
+            <p class="eyebrow">02 — A WINDOW INTO THE WORK</p>
+            <h2 id="clarity-title">Every move.<br />In the open.</h2>
+            <p>
+              The useful part of an agent isn't just where it ends up. It's
+              being able to follow how it got there.
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/ali-master/jev-browser-agent#try-it"
+              >Explore the inspector
+              <i class="icon arrow-up-right" aria-hidden="true"></i
+            ></a>
+          </div>
+          <div class="trace-board reveal">
+            <div class="trace-heading">
+              <span class="signal" aria-hidden="true"></span
+              ><span>DECISION TRAIL</span><span>OBSERVED EVIDENCE</span>
+            </div>
+            <div class="trace-entry">
+              <span class="trace-index">01</span>
+              <div>
+                <strong>Destination entered</strong
+                ><span>TYPE_TEXT <b>[04]</b></span>
+              </div>
+              <span class="trace-result"
+                >Lisbon <i class="icon check" aria-hidden="true"></i
+              ></span>
+            </div>
+            <div class="trace-entry">
+              <span class="trace-index">02</span>
+              <div>
+                <strong>Category selected</strong
+                ><span>SELECT <b>[06]</b></span>
+              </div>
+              <span class="trace-result"
+                >Design <i class="icon check" aria-hidden="true"></i
+              ></span>
+            </div>
+            <div class="trace-entry">
+              <span class="trace-index">03</span>
+              <div>
+                <strong>Cancellation confirmed</strong
+                ><span>CLICK <b>[07]</b></span>
+              </div>
+              <span class="trace-result"
+                >Checked <i class="icon check" aria-hidden="true"></i
+              ></span>
+            </div>
+            <div class="trace-entry trace-entry-last">
+              <span class="trace-index">04</span>
+              <div>
+                <strong>Casa Flora opened</strong><span>CLICK <b>[08]</b></span>
+              </div>
+              <span class="trace-result"
+                >Verified <i class="icon check" aria-hidden="true"></i
+              ></span>
+            </div>
+            <div class="trace-summary">
+              <span>From a goal to a checked result.</span
+              ><span class="trace-done"
+                ><i class="icon check" aria-hidden="true"></i> DONE</span
+              >
+            </div>
+            <p class="trace-disclaimer">
+              Illustrative trace from the walkthrough above.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="principles section-width"
+        aria-label="Designed to stay in your control"
+      >
+        <article class="reveal">
+          <span class="principle-number">01 / YOUR PACE</span>
+          <h3>Stay in the loop.</h3>
+          <p>
+            Run automatically or go step by step. Pause, inspect a decision, and
+            follow the pages visited.
+          </p>
+        </article>
+        <article class="reveal">
+          <span class="principle-number">02 / YOUR MODELS</span>
+          <h3>Local. Cloud. Your call.</h3>
+          <p>
+            Connect a System One decision model and an OpenAI-compatible chat
+            helper. Switch connections as you work.
+          </p>
+        </article>
+        <article class="reveal">
+          <span class="principle-number">03 / YOUR CODE</span>
+          <h3>Small enough to know.</h3>
+          <p>
+            A Bun-native TypeScript library with a browser inspector and CLI.
+            Open it up. Make it yours.
+          </p>
+        </article>
+      </section>
+
+      <section
+        class="build section-width"
+        id="build"
+        aria-labelledby="build-title"
+      >
+        <div class="build-copy reveal">
+          <p class="eyebrow">03 — BUILT FOR BUILDERS</p>
+          <h2 id="build-title">
+            A few lines.<br /><span class="muted">A new direction.</span>
+          </h2>
+          <p>
+            Bring a goal and your model connections.<br />Jev brings the loop.
+          </p>
+          <a
+            class="text-link"
+            href="https://github.com/ali-master/jev-browser-agent#use-the-library"
+            >Read the documentation
+            <i class="icon arrow-up-right" aria-hidden="true"></i
+          ></a>
+          <p class="build-requirement">
+            Bun 1.4.3+ · Chromium · Two model connections
+          </p>
+        </div>
+        <div class="code-window reveal">
+          <div class="code-toolbar">
+            <div class="code-tabs" role="tablist" aria-label="Quickstart">
+              <button
+                id="tab-install"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="panel-install"
+                tabindex="0"
+                data-code-tab="install"
+              >
+                01 Install</button
+              ><button
+                id="tab-connect"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="panel-connect"
+                tabindex="-1"
+                data-code-tab="connect"
+              >
+                02 Connect</button
+              ><button
+                id="tab-run"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="panel-run"
+                tabindex="-1"
+                data-code-tab="run"
+              >
+                03 Run
+              </button>
+            </div>
+            <button
+              class="copy-button"
+              type="button"
+              data-copy
+              aria-label="Copy installation commands"
+              disabled
+            >
+              <i class="icon copy" aria-hidden="true"></i
+              ><span data-copy-label>Copy</span>
+            </button>
+          </div>
+          <div
+            id="panel-install"
+            class="code-panel"
+            role="tabpanel"
+            aria-labelledby="tab-install"
+            tabindex="0"
+          >
+            <pre><code><span class="syntax-comment"># Add Jev to your project</span>
+bun add <span class="syntax-string">@usex/jev-browser-agent</span>
+
+<span class="syntax-comment"># Give it a browser</span>
+bunx --bun --no-install playwright install chromium</code></pre>
+            <p class="code-note">Your next browser agent starts here.</p>
+          </div>
+          <div
+            id="panel-connect"
+            class="code-panel"
+            role="tabpanel"
+            aria-labelledby="tab-connect"
+            tabindex="0"
+            hidden
+          >
+            <pre><code><span class="syntax-comment"># .env — a System One decision model</span>
+TYPESAFE_BASE_URL=http://127.0.0.1:1234/v1
+TYPESAFE_MODEL=your-decision-model
+TYPESAFE_API_KEY=
+
+<span class="syntax-comment"># An OpenAI-compatible chat helper</span>
+TEXT_MODEL_BASE_URL=http://127.0.0.1:1234/v1
+TEXT_MODEL=your-chat-model
+TEXT_MODEL_API_KEY=</code></pre>
+            <p class="code-note">
+              Use local endpoints or your cloud provider's URL and key. The chat
+              helper must support JSON schemas.
+            </p>
+          </div>
+          <div
+            id="panel-run"
+            class="code-panel"
+            role="tabpanel"
+            aria-labelledby="tab-run"
+            tabindex="0"
+            hidden
+          >
+            <pre><code><span class="syntax-keyword">import</span> { Agent } <span class="syntax-keyword">from</span> <span class="syntax-string">"@usex/jev-browser-agent"</span>;
+
+<span class="syntax-keyword">await using</span> agent = <span class="syntax-keyword">await</span> Agent.create(
+  <span class="syntax-string">"https://en.wikipedia.org/wiki/Main_Page"</span>,
+  <span class="syntax-string">"Find and open the article about Lisbon."</span>,
+);
+
+<span class="syntax-keyword">for await</span> (<span class="syntax-keyword">const</span> state <span class="syntax-keyword">of</span> agent.run()) {
+  console.log(state.status, state.page.url);
+}</code></pre>
+            <p class="code-note">
+              Save as agent.ts, then run: <code>bun run agent.ts</code>
+            </p>
+          </div>
+          <span
+            class="sr-only"
+            role="status"
+            aria-live="polite"
+            data-copy-status
+          ></span>
+        </div>
+      </section>
+
+      <section
+        class="closing section-width reveal"
+        aria-labelledby="closing-title"
+      >
+        <div>
+          <p class="eyebrow">THE WEB IS FULL OF POSSIBILITIES.</p>
+          <h2 id="closing-title">Give your intent<br />a next move.</h2>
+          <a
+            class="button button-dark"
+            href="https://github.com/ali-master/jev-browser-agent"
+            >Make something with Jev
+            <i class="icon arrow-up-right" aria-hidden="true"></i
+          ></a>
+        </div>
+        <img
+          class="closing-logo"
+          src="./logo.svg"
+          alt=""
+          width="256"
+          height="256"
+        />
+        <span class="closing-footnote">OPEN SOURCE. OPEN POSSIBILITIES.</span>
+      </section>
+    </main>
+
+    <footer class="site-footer section-width">
+      <a class="footer-brand" href="#main"
+        >Jev<span>A browser that chooses.</span></a
+      >
+      <div class="footer-links">
+        <a href="https://github.com/ali-master/jev-browser-agent#readme"
+          >Documentation</a
+        ><a
+          href="https://github.com/ali-master/jev-browser-agent/blob/master/LICENSE"
+          >MIT license</a
+        ><button
+          type="button"
+          class="motion-toggle"
+          data-motion-toggle
+          aria-pressed="true"
+          disabled
+        >
+          <span class="signal" aria-hidden="true"></span
+          ><span data-motion-label>Motion on</span>
+        </button>
+      </div>
+      <p class="footer-credit">
+        A Bun-native reimagining of
+        <a href="https://github.com/browser-use/jev-ultrafast">Jev Ultrafast</a
+        >. Made by <a href="https://github.com/ali-master">Ali Torki</a>.
+      </p>
+    </footer>
+  </body>
+</html>
