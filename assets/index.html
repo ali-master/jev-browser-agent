@@ -17,6 +17,7 @@
     <meta property="og:type" content="website" />
     <title>Jev — A browser that chooses.</title>
     <link rel="icon" href="./logo.svg" type="image/svg+xml" />
+    <script src="./theme.js"></script>
     <link rel="stylesheet" href="./landing.css" />
     <script src="./landing.js" defer></script>
   </head>
@@ -613,16 +614,52 @@ TEXT_MODEL_API_KEY=</code></pre>
         ><a
           href="https://github.com/ali-master/jev-browser-agent/blob/master/LICENSE"
           >MIT license</a
-        ><button
-          type="button"
-          class="motion-toggle"
-          data-motion-toggle
-          aria-pressed="true"
-          disabled
         >
-          <span class="signal" aria-hidden="true"></span
-          ><span data-motion-label>Motion on</span>
-        </button>
+        <div class="footer-preferences">
+          <button
+            type="button"
+            class="motion-toggle"
+            data-motion-toggle
+            aria-pressed="true"
+            disabled
+          >
+            <span class="signal" aria-hidden="true"></span
+            ><span data-motion-label>Motion on</span>
+          </button>
+          <label class="theme-select">
+            <span class="sr-only">Color theme</span>
+            <svg
+              class="theme-symbol"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="8"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" />
+            </svg>
+            <select name="theme" data-theme-select disabled>
+              <option
+                value="system"
+                data-description="Follow your device's appearance."
+              >
+                System
+              </option>
+              <option value="light" data-description="A bright, warm canvas.">
+                Light
+              </option>
+              <option value="dark" data-description="A dark, muted canvas.">
+                Dark
+              </option>
+            </select>
+            <i class="icon select-chevron" aria-hidden="true"></i>
+          </label>
+        </div>
       </div>
       <p class="footer-credit">
         A Bun-native reimagining of
