@@ -1,0 +1,82 @@
+{
+  "name": "@usex/jev-browser-agent",
+  "description": "A Bun browser agent driven by typed decisions",
+  "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Ali Torki",
+    "url": "https://github.com/ali-master",
+    "email": "ali_4286@live.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ali-master/jev-browser-agent.git"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "jev": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "keywords": [
+    "jev",
+    "browser",
+    "agent"
+  ],
+  "scripts": {
+    "start": "bun run src/cli.ts",
+    "dev": "bun --watch src/cli.ts",
+    "agent": "bun run src/cli.ts run",
+    "build": "bun run scripts/build.ts",
+    "test": "bun test",
+    "test:browser": "bun test tests/browser.test.ts tests/integration.test.ts",
+    "typecheck": "bun --bun x tsc --noEmit",
+    "check": "bun run typecheck && bun test && bun run build",
+    "browser:install": "bun --bun x playwright install chromium",
+    "format": "bun --bun x prettier --write src tests scripts examples package.json tsconfig.json tsconfig.build.json .release-it.json .github/workflows/ci.yml",
+    "format:check": "bun --bun x prettier --check src tests scripts examples package.json tsconfig.json tsconfig.build.json .release-it.json .github/workflows/ci.yml",
+    "prepack": "bun run build",
+    "publish:next": "bun publish --access public --tag next",
+    "publish:package": "bun publish --access public",
+    "prerelease": "bun run check",
+    "release": "bun --bun x release-it"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.3",
+    "typescript": "7.0.2",
+    "prettier": "3.9.10",
+    "release-it": "21.1.1"
+  },
+  "dependencies": {
+    "playwright": "1.64.1"
+  },
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "changelog": {
+    "labels": {
+      "feature": "Features",
+      "bug": "Bug fixes",
+      "enhancement": "Enhancements",
+      "docs": "Docs",
+      "dependencies": "Dependencies",
+      "type: code style": "Code style tweaks",
+      "status: blocked": "Breaking changes",
+      "breaking change": "Breaking changes"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "packageManager": "bun@1.4.3"
+}

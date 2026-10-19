@@ -1,0 +1,29 @@
+# dependencies
+/node_modules
+
+# IDE
+/.idea
+/.awcache
+/.vscode
+
+# misc
+npm-debug.log
+.DS_Store
+/coverage
+/.nyc_output
+
+# dist
+dist
+.claude
+
+# Local credentials and browser traces
+.env
+.env.*
+!.env.example
+.jev/
+artifacts/
+test-results/
+venv/
+.venv/
+__pycache__/
+.codebase-memory/
