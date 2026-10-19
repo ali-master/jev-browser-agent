@@ -77,7 +77,11 @@ Open **[127.0.0.1:8766](http://127.0.0.1:8766)**, expand **Model settings**, sav
 
 The inspector streams the actual Chromium browser and highlights each selected target before execution. Follow the task checklist, the last observed result, and the **Activity** filmstrip. **Pages visited** lets you review the journey; **Model details** exposes the decision scores.
 
+The agent pointer follows browser mouse movements, pulses on actions, and shows the direction of smooth scrolling. It stays separate from the page DOM and hides while reviewing an old frame. **Preview each action** adds a pause before execution. Choose **Travel planner · crowded fixture** to exercise offscreen results, **Google Flights · live website** for a real page, or **Your website** for a custom URL. Live sites can show consent dialogs or require controls that the current model cannot handle.
+
 The default mode runs automatically. **Pause** lets the current request finish and prevents the next action. Choose **Step by step** to inspect a decision with **Choose next**, then apply it with **Execute choice**. Saved frames can be reviewed while paused without navigating the controlled browser. Starting another task or restarting the server clears this in-memory history.
+
+Stop the server with **Ctrl+C** in the terminal that started it, including `bun run dev`. On macOS, **⌘C** normally copies text. Shutdown closes the listener and live streams, gives the current step up to three seconds to finish, then closes the browser. A second interrupt forces immediate exit; the CLI also has a five-second shutdown deadline.
 
 Chromium runs in its own isolated context. No Python, `uv`, or Browser Harness is needed. The original Python implementation is available in the [upstream repository](https://github.com/browser-use/jev-ultrafast).
 
@@ -162,10 +166,18 @@ bun run agent.ts
 
 `Agent.create` reads the same model settings as the inspector. `await using` closes the owned browser context when execution leaves the scope. Library callers can provide a `settings` callback, `cdpUrl`, `maxSteps`, or `recordDir` through the third argument.
 
-The package also includes the `jev` CLI:
+`showPointer` defaults to `false` in both `AgentOptions` and `BrowserOptions`. Set `showPointer: true` together with an `onPointer` callback to animate the pointer in your own viewer. When disabled, pointer events and animation delays are skipped; clicks and scrolling still work. The demo inspector explicitly enables this option.
+
+Install the `jev` CLI globally with Bun:
 
 ```sh
-bunx --bun --no-install jev run \
+bun add --global @usex/jev-browser-agent
+```
+
+Run a browser task:
+
+```sh
+jev run \
   --url https://en.wikipedia.org/wiki/Main_Page \
   --goal 'Find and open the article about Gödel’s incompleteness theorems.' \
   --headed --max-steps 20 --record artifacts/research
@@ -173,10 +185,10 @@ bunx --bun --no-install jev run \
 
 Omit `--headed` to run headlessly. `--record` saves state and screenshots for inspection. `BROWSER_CDP_URL` connects the CLI and inspector to an existing Chromium CDP endpoint, while still creating a separate context; it does not use your signed-in profile.
 
-To open the inspector from your project:
+To open the inspector:
 
 ```sh
-bunx --bun --no-install jev serve --port 8766
+jev serve --port 8766
 ```
 
 Use `--port` or the `PORT` environment variable to change its port.
@@ -191,9 +203,11 @@ Use `--port` or the `PORT` environment variable to change its port.
 - **Verify after input.** Log confirmed actions before observing their results. Completed visible fields are rechecked; a regression reopens the affected checkpoint.
 - **Reuse text carefully.** An interrupted text result is reused only when the entire helper input and connection settings are unchanged.
 
-Only observations and model requests are retried. Browser mutations are never replayed after an uncertain error. Default limits are 60 browser actions and 120 decision cycles; three unchanged non-wait actions stop the loop. Transport retries allow at most three attempts for known transient failures. Invalid chat output gets one schema repair. A missing field value (`text: null`) stops with a clear reason and never types an invented value.
+Only observations and model requests are retried. Browser mutations are never replayed after an uncertain error. Default limits are 60 browser actions and 120 decision cycles. Three unchanged actions stop the loop; three consecutive unchanged waits trigger a bounded page recheck and, on a ready page, a repair of the remaining checklist. WAIT is then removed from an unchanged ready page's choices. Checklist revisions share a two-revision budget; waiting never counts as completion. Transport retries allow at most three attempts for known transient failures. Invalid chat output gets one schema repair. A missing field value (`text: null`) stops with a clear reason and never types an invented value.
 
 Loading/empty observations and a proposed `BLOCKED` state receive a bounded wait of about one second. Snapshot failure can recover the observation of a consumed action, without executing it again. Screenshot capture has its own one-second deadline; a missing image does not discard the DOM observation. Incomplete coverage and loading are distinguished from an unsupported step in `stop_reason`.
+
+Navigating documents get up to 30 observation attempts, spaced 100 ms apart. The pointer rechecks the target after moving because hover can cover, move or replace a control. Previously verified controls retain their evidence when scrolling or SPA navigation hides them; a visible changed value still reopens the affected steps.
 
 After reaching an unexpected page, the helper can revise the remaining steps while preserving completed evidence. At most two revisions and three final goal reviews are allowed. A final review that finds missing requirements adds those steps within the same budget; otherwise the run stops without claiming completion.
 
