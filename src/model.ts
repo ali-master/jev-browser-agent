@@ -186,12 +186,20 @@ export async function checkModels(readSettings: SettingsReader) {
                 schema: {
                   type: "object",
                   additionalProperties: false,
-                  required: ["ready"],
-                  properties: { ready: { type: "boolean" } },
+                  required: ["ready", "text"],
+                  properties: {
+                    ready: { type: "boolean" },
+                    text: { anyOf: [{ type: "string" }, { type: "null" }] },
+                  },
                 },
               },
             },
-            messages: [{ role: "user", content: 'Connection check. Return only {"ready":true}.' }],
+            messages: [
+              {
+                role: "user",
+                content: 'Connection check. Return only {"ready":true,"text":null}.',
+              },
+            ],
           });
           const first = Array.isArray(result.choices) ? result.choices[0] : undefined;
           let value: unknown;
@@ -203,7 +211,12 @@ export async function checkModels(readSettings: SettingsReader) {
           } catch {
             value = null;
           }
-          if (!object(value) || value.ready !== true || Object.keys(value).length !== 1)
+          if (
+            !object(value) ||
+            value.ready !== true ||
+            value.text !== null ||
+            Object.keys(value).length !== 2
+          )
             throw new Error(
               "The chat helper did not return the required JSON schema. Select a chat model with structured output support.",
             );
@@ -435,7 +448,7 @@ export async function fieldText(
             strict: true,
             schema: {
               type: "object",
-              properties: { text: { type: ["string", "null"] } },
+              properties: { text: { anyOf: [{ type: "string" }, { type: "null" }] } },
               required: ["text"],
               additionalProperties: false,
             },

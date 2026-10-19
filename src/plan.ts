@@ -40,8 +40,8 @@ A result card's text is not proof of opening it. Use checked:false for an unchec
 Use 1–12 steps, 1–4 checks per step. Keep already satisfied requirements so they can be verified.`;
 
 const controlProperties = {
-  ref: { type: ["string", "null"] },
-  scope: { type: ["string", "null"] },
+  ref: { anyOf: [{ type: "string" }, { type: "null" }] },
+  scope: { anyOf: [{ type: "string" }, { type: "null" }] },
 };
 const PLAN_FORMAT = {
   type: "json_schema",
@@ -405,7 +405,7 @@ The top-level output MUST be completion_review with complete, answer, evidence, 
         required: ["complete", "answer", "evidence", "missing_steps"],
         properties: {
           complete: { type: "boolean" },
-          answer: { type: ["string", "null"] },
+          answer: { anyOf: [{ type: "string" }, { type: "null" }] },
           evidence: {
             type: "array",
             maxItems: 12,

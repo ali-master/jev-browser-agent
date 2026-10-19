@@ -43,7 +43,7 @@ function mockModels(beforeDecision?: () => Promise<void>) {
     if (new URL(request.url).pathname.endsWith("chat/completions")) {
       const body = await request.json();
       if (body.response_format?.json_schema?.name === "connection_check")
-        return chatResponse({ ready: true });
+        return chatResponse({ ready: true, text: null });
       if (body.response_format?.json_schema?.name === "completion_review") {
         counts.verification++;
         return completionResponse(body);

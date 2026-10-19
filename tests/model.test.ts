@@ -30,7 +30,7 @@ test.each(["ready", "invalid", "unauthorized"])(
         ? Response.json({
             answers: { readiness: choice(body.questions.readiness.criteria, "ready") },
           })
-        : chatResponse({ ready: true });
+        : chatResponse({ ready: true, text: null });
     });
     servers.push(p.server);
     const results = await checkModels(async () => p.settings);
@@ -213,9 +213,9 @@ test("null is a valid missing-value result and is not repaired", async () => {
   const p = provider(async (request) => {
     calls++;
     const body = await request.json();
-    expect(body.response_format.json_schema.schema.properties.text.type).toEqual([
-      "string",
-      "null",
+    expect(body.response_format.json_schema.schema.properties.text.anyOf).toEqual([
+      { type: "string" },
+      { type: "null" },
     ]);
     return chatResponse({ text: null });
   });

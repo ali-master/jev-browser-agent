@@ -1,11 +1,44 @@
 import { afterEach, expect, test } from "bun:test";
-import { createPlan, updateProgress, validatePlan } from "../src/plan.js";
+import { createPlan, reviewCompletion, updateProgress, validatePlan } from "../src/plan.js";
 import type { Checkpoint, CompletionCheck, HistoryEntry } from "../src/types.js";
-import { chatResponse, page, provider } from "./helpers.js";
+import { chatResponse, completionResponse, page, provider } from "./helpers.js";
 
 const servers: Bun.Server<undefined>[] = [];
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop(true);
+});
+
+test("nullable checklist and review schemas work with string-only type parsers", async () => {
+  const acceptsTypes = (schema: unknown): boolean =>
+    !schema ||
+    typeof schema !== "object" ||
+    (Array.isArray(schema)
+      ? schema.every(acceptsTypes)
+      : Object.entries(schema).every(([key, value]) =>
+          key === "type" ? typeof value === "string" : acceptsTypes(value),
+        ));
+  const p = provider(async (request) => {
+    const body = await request.json();
+    if (!acceptsTypes(body.response_format.json_schema.schema))
+      return Response.json({ error: "'type' must be a string" }, { status: 400 });
+    return body.response_format.json_schema.name === "completion_review"
+      ? completionResponse(body)
+      : chatResponse({
+          steps: [{ instruction: "Read Search", checks: [{ kind: "title", includes: "Search" }] }],
+        });
+  });
+  servers.push(p.server);
+  const { steps } = await createPlan(page(), "Read Search", async () => p.endpoint);
+  const plan = steps.map((step) => ({
+    ...step,
+    started_at_action: null,
+    started_fingerprint: null,
+    verified: null,
+  }));
+  expect(updateProgress(plan, page(), [])).toBe(1);
+  expect(
+    (await reviewCompletion(page(), "Read Search", plan, async () => p.endpoint)).complete,
+  ).toBe(true);
 });
 const checkpoints = (...steps: CompletionCheck[][]): Checkpoint[] =>
   steps.map((checks, index) => ({
