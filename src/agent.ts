@@ -1,12 +1,20 @@
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { Browser, StalePage } from "./browser.js";
 import type { BrowserDriver, BrowserOptions } from "./browser.js";
 import { SettingsStore } from "./config.js";
 import { actionSpace, choose, fieldContext, fieldText } from "./model.js";
 import { MAX_STEPS } from "./questions.js";
 import { createPlan, updateProgress } from "./plan.js";
-import type { Action, AgentState, ModelCall, ModelRole, SettingsReader } from "./types.js";
+import type {
+  Action,
+  AgentState,
+  Decision,
+  ModelCall,
+  ModelRole,
+  SettingsReader,
+} from "./types.js";
 
 export interface AgentOptions extends BrowserOptions {
   screenshots?: boolean;
@@ -25,6 +33,7 @@ export class Agent {
   private busy = false;
   private pendingText: { key: string; text: string; helper: ModelCall } | null = null;
   private settings: SettingsReader;
+  private selection: { fingerprint: string; decision: Decision; action?: Action } | null = null;
 
   constructor(
     readonly browser: BrowserDriver,
@@ -141,6 +150,7 @@ export class Agent {
 
   private async predict() {
     const state = this.state;
+    this.selection = null;
     state.decision = null;
     this.activity("observing");
     if (!(await this.browser.fresh(state.page)))
@@ -170,14 +180,20 @@ export class Agent {
     }
     const config = await this.settings();
     this.activity("deciding");
+    const observed = structuredClone(state.page);
     state.decision = await choose(
-      state.page,
+      observed,
       state.plan[state.plan_index]!,
       state.history,
       config.decision,
       false,
       this.modelObserver("decision"),
     );
+    this.selection = {
+      fingerprint: observed.fingerprint,
+      decision: structuredClone(state.decision),
+      action: observed.actions.find((action) => action.id === state.decision!.choice),
+    };
     state.decisions.push({
       ...state.decision,
       fingerprint: state.page.fingerprint,
@@ -200,10 +216,17 @@ export class Agent {
   private async act(expectedFingerprint?: string) {
     const state = this.state;
     const { decision, page } = state;
-    if (!decision || expectedFingerprint !== page.fingerprint)
-      throw new Error("Observe and choose before acting.");
+    const selection = this.selection;
+    this.selection = null;
     // Consume once before any model call or browser mutation.
     state.decision = null;
+    if (!decision || !selection) throw new Error("Observe and choose before acting.");
+    if (
+      expectedFingerprint !== page.fingerprint ||
+      selection.fingerprint !== page.fingerprint ||
+      !isDeepStrictEqual(decision, selection.decision)
+    )
+      throw new StalePage("Decision no longer matches its original observation. Choose again.");
     if (decision.choice === "DONE")
       throw new Error("Completion requires verified checkpoints, not a model DONE response.");
     if (decision.choice === "BLOCKED") {
@@ -215,6 +238,13 @@ export class Agent {
     }
     const action = page.actions.find((candidate) => candidate.id === decision.choice);
     if (!action) throw new Error("Decision does not identify an observed action.");
+    const semanticAction = (value: Action) =>
+      "node" in value ? { ...value, rect: undefined } : value;
+    if (
+      !selection.action ||
+      !isDeepStrictEqual(semanticAction(action), semanticAction(selection.action))
+    )
+      throw new StalePage("The selected control changed identity. Choose again.");
     if (state.history.length >= this.maxSteps) {
       state.status = "blocked";
       throw new Error("Reached the browser-action budget.");

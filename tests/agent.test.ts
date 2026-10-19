@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import { Agent } from "../src/agent.js";
-import { StalePage } from "../src/browser.js";
+import { StalePage, fingerprint } from "../src/browser.js";
 import { chatResponse, decisionResponse, page, provider } from "./helpers.js";
 import type { DecisionRequest, TaskStep } from "../src/types.js";
 
@@ -227,3 +227,26 @@ test("a missing required field value blocks clearly without typing or retrying",
   expect(driver.act).not.toHaveBeenCalled();
   expect(agent.state.history).toHaveLength(0);
 });
+
+test.each(["new fingerprint", "reused fingerprint", "changed decision"])(
+  "a consumer cannot rebind an old decision to a new control: %s",
+  async (change) => {
+    const { agent, driver } = runner("CLICK", "2");
+    await agent.command("predict");
+    if (change === "changed decision") agent.state.decision!.choice = "e1";
+    else {
+      const next = structuredClone(agent.state.page);
+      Object.assign(
+        next.actions.find((a) => a.id === "e3")!,
+        { node: 99, label: "Different control" },
+      );
+      if (change === "new fingerprint") next.fingerprint = fingerprint(next);
+      agent.state.page = next;
+    }
+    await expect(
+      agent.command("act", { fingerprint: agent.state.page.fingerprint }),
+    ).rejects.toBeInstanceOf(StalePage);
+    expect(driver.act).not.toHaveBeenCalled();
+    expect(agent.state.decision).toBeNull();
+  },
+);
