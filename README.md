@@ -1,4 +1,6 @@
-<img src="assets/logo.svg" alt="Jev Browser Agent logo" width="128" height="128" />
+<p align="center">
+  <img src="assets/logo.svg" alt="Jev Browser Agent logo" width="128" height="128" />
+</p>
 
 # Jev Browser Agent
 
