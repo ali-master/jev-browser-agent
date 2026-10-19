@@ -185,7 +185,9 @@ test("an early DONE is rejected even when the model assigns it full confidence",
 
 test("failed checklist attempts remain visible in the trace without executing a browser action", async () => {
   const { agent, driver } = runner("WAIT", "", 60, []);
-  await expect(agent.command("tick")).rejects.toThrow("verifiable checklist");
+  await expect(agent.command("tick")).rejects.toThrow(
+    "Checklist must contain 1–12 steps",
+  );
   expect(agent.state.planning_calls).toHaveLength(2);
   expect(agent.state.decisions).toHaveLength(0);
   expect(agent.state.status).toBe("error");

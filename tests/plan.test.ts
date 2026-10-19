@@ -164,6 +164,91 @@ test("the planner repairs once, rereads settings, and fails closed on a second i
   expect(reads).toBe(2);
 });
 
+test("planner repair and the final error explain the invalid step without echoing model output", async () => {
+  let calls = 0;
+  const reason = "Step 1 needs a nonempty requested field value";
+  const transport = provider(async (request) => {
+    const body = await request.json();
+    if (++calls === 2) expect(body.messages.at(-1).content).toContain(reason);
+    return chatResponse({
+      steps: [
+        {
+          instruction: "test-key",
+          checks: [{ kind: "value", label: "test-key", equals: "" }],
+        },
+      ],
+    });
+  });
+  servers.push(transport.server);
+  const error = await createPlan(
+    page(),
+    "Search Lisbon",
+    async () => transport.endpoint,
+  ).catch((error: Error) => error);
+  expect(error).toBeInstanceOf(Error);
+  const message = (error as Error).message;
+  expect(message).toContain(reason);
+  expect(message).toContain("after 2 attempts");
+  expect(message).toContain("no browser action executed for this plan");
+  expect(message).toContain("Chat helper model in Model settings");
+  expect(message).not.toContain("test-key");
+  expect(calls).toBe(2);
+});
+
+test.each([
+  ["malformed JSON", "test-key", "stop", "invalid or missing checklist JSON"],
+  ["missing JSON", null, "stop", "invalid or missing checklist JSON"],
+  [
+    "truncated response",
+    JSON.stringify({
+      steps: [
+        {
+          instruction: "Read Search",
+          checks: [{ kind: "title", includes: "Search" }],
+        },
+      ],
+    }),
+    "length",
+    "output token limit",
+  ],
+])(
+  "planner diagnoses %s and keeps repair bounded",
+  async (_, content, finishReason, reason) => {
+    let calls = 0;
+    const transport = provider(async (request) => {
+      const body = await request.json();
+      if (++calls === 2)
+        expect(body.messages.at(-1).content).toContain(reason!);
+      return Response.json({
+        choices: [{ message: { content }, finish_reason: finishReason }],
+      });
+    });
+    servers.push(transport.server);
+    const error = await createPlan(
+      page(),
+      "Read Search",
+      async () => transport.endpoint,
+    ).catch((error: Error) => error);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(reason!);
+    expect((error as Error).message).not.toContain("test-key");
+    expect(calls).toBe(2);
+  },
+);
+
+test("checked values report the required boolean without coercing model output", () => {
+  expect(() =>
+    validatePlan({
+      steps: [
+        {
+          instruction: "Enable availability",
+          checks: [{ kind: "checked", label: "Available", equals: "true" }],
+        },
+      ],
+    }),
+  ).toThrow("Step 1 needs a boolean equals");
+});
+
 test("a corrected checklist keeps both model calls without credentials", async () => {
   let calls = 0;
   const transport = provider(() =>

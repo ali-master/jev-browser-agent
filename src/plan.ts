@@ -167,6 +167,14 @@ export function validatePlan(
     const checks = step.checks;
     for (const check of checks) {
       if (!object(check)) throw new Error("Invalid completion check.");
+      if (check.kind === "value" && !nonempty(check.equals))
+        throw new Error(
+          `Step ${index + 1} needs a nonempty requested field value in equals. Use value checks only for editable fields or dropdowns.`,
+        );
+      if (check.kind === "checked" && typeof check.equals !== "boolean")
+        throw new Error(
+          `Step ${index + 1} needs a boolean equals for its checked check: true to enable, false to disable.`,
+        );
       const valid =
         check.kind === "value"
           ? controlKeys(check, ["kind", "label", "equals"]) &&
@@ -185,7 +193,7 @@ export function validatePlan(
                 nonempty(check.includes);
       if (!valid)
         throw new Error(
-          "Completion checks must use only the documented kinds and exact keys.",
+          `Step ${index + 1} has an invalid completion check. Use only the documented kinds and exact keys, with nonempty labels and text values.`,
         );
       if (page && ["value", "checked", "action"].includes(String(check.kind))) {
         const elements = actionSpace(page.actions).elements;
@@ -215,7 +223,7 @@ export function validatePlan(
           )
         )
           throw new Error(
-            `Step ${index + 1} uses the wrong check kind for ${check.label}. Checkbox/radio/switch require checked; editable fields/dropdowns require value; buttons/links require action plus an outcome.`,
+            `Step ${index + 1} uses the wrong check kind for its observed control. Checkbox/radio/switch require checked; editable fields/dropdowns require value; buttons/links require action plus an outcome.`,
           );
       }
     }
@@ -266,6 +274,7 @@ export async function createPlan(
 ) {
   let correction = "";
   let previous = "";
+  let failure = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const endpoint = await readEndpoint();
     const started = performance.now();
@@ -315,11 +324,15 @@ export async function createPlan(
       latency_ms: Math.round(performance.now() - started),
       usage: object(result.usage) ? result.usage : {},
     });
+    const first = Array.isArray(result.choices) ? result.choices[0] : undefined;
+    if (object(first) && first.finish_reason === "length") {
+      failure = "The checklist response reached the output token limit.";
+      previous = "Incomplete checklist";
+      correction = `${failure} Return a shorter JSON checklist without dropping goal requirements.`;
+      continue;
+    }
     let output: unknown;
     try {
-      const first = Array.isArray(result.choices)
-        ? result.choices[0]
-        : undefined;
       if (
         !object(first) ||
         !object(first.message) ||
@@ -329,19 +342,20 @@ export async function createPlan(
       previous = first.message.content;
       output = JSON.parse(previous);
     } catch {
+      failure = "The chat helper returned invalid or missing checklist JSON.";
       previous = "Invalid JSON";
-      correction =
-        "Your last response was not valid JSON. Return the documented JSON checklist.";
+      correction = `${failure} Return the documented JSON checklist.`;
       continue;
     }
     try {
       return { steps: validatePlan(output, goal, page), calls };
     } catch (error) {
-      correction = `Correct the previous checklist error: ${(error as Error).message}`;
+      failure = (error as Error).message;
+      correction = `Correct the previous checklist error: ${failure}`;
     }
   }
   throw new Error(
-    "Chat helper could not produce a verifiable checklist; no browser action executed.",
+    `Chat helper could not produce a verifiable checklist after 2 attempts; no browser action executed for this plan. ${failure} Check the Chat helper model in Model settings; a successful connection check does not verify planning quality.`,
   );
 }
 
