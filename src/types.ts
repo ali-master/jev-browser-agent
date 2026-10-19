@@ -1,5 +1,6 @@
 export type TargetOperation = "CLICK" | "TYPE_TEXT" | "SELECT";
-export type Operation = TargetOperation | "SCROLL_UP" | "SCROLL_DOWN" | "WAIT" | "DONE" | "BLOCKED";
+export type Operation =
+  TargetOperation | "SCROLL_UP" | "SCROLL_DOWN" | "WAIT" | "DONE" | "BLOCKED";
 
 interface Target {
   id: string;
@@ -22,7 +23,12 @@ interface Target {
 }
 export type Action =
   | (Target & { kind: "click" | "fill" })
-  | (Target & { kind: "select"; value: string; option_index: number; option_node: number })
+  | (Target & {
+      kind: "select";
+      value: string;
+      option_index: number;
+      option_node: number;
+    })
   | { id: string; kind: "scroll"; label: string; delta: number }
   | { id: string; kind: "wait"; label: string };
 
@@ -94,7 +100,12 @@ export interface ModelCall {
   latency_ms: number;
   usage: Record<string, unknown>;
   endpoint?: string;
-  outcome?: "response" | "network_error" | "http_error" | "provider_error" | "invalid_response";
+  outcome?:
+    | "response"
+    | "network_error"
+    | "http_error"
+    | "provider_error"
+    | "invalid_response";
   http_status?: number;
   pricing?: Endpoint["pricing"];
 }
@@ -133,7 +144,8 @@ export interface HistoryEntry {
   executed_ms: number;
   elapsed_ms: number;
 }
-export type Status = "ready" | "predicted" | "done" | "blocked" | "error" | "closed";
+export type Status =
+  "ready" | "predicted" | "done" | "blocked" | "error" | "closed";
 interface ControlCheck {
   label: string;
   ref?: string | null;
@@ -171,7 +183,13 @@ export interface AgentState {
   history: HistoryEntry[];
   status: Status;
   activity: {
-    kind: "observing" | "planning" | "deciding" | "writing" | "acting" | "verifying";
+    kind:
+      | "observing"
+      | "planning"
+      | "deciding"
+      | "writing"
+      | "acting"
+      | "verifying";
     started_at: number;
     action?: Action;
     text?: string;

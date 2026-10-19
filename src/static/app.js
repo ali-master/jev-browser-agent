@@ -8,16 +8,22 @@ let state = null,
 let reviewStep = null,
   liveFrame = null,
   historyKey = "";
-const stopped = () => ["done", "blocked", "error", "closed"].includes(state?.status);
+const stopped = () =>
+  ["done", "blocked", "error", "closed"].includes(state?.status);
 const goals = {
   custom: "",
-  travel: "Find a Design stay in Lisbon with Free cancellation and open Casa Flora.",
-  research: "Open the article about using finite choices to control browser agents.",
+  travel:
+    "Find a Design stay in Lisbon with Free cancellation and open Casa Flora.",
+  research:
+    "Open the article about using finite choices to control browser agents.",
 };
 const escape = (value) =>
   String(value ?? "").replace(
     /[&<>"']/g,
-    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ],
   );
 const percent = (value) => `${(value * 100).toFixed(value < 0.01 ? 1 : 0)}%`;
 const seconds = (value) => `${(value / 1000).toFixed(1)} s`;
@@ -33,7 +39,8 @@ function applyState(next) {
     ["done", "blocked", "error", "closed"].includes(next.status)
   )
     liveFrame = null;
-  const changed = next.revision !== state?.revision || next.text_model !== state?.text_model;
+  const changed =
+    next.revision !== state?.revision || next.text_model !== state?.text_model;
   state = next;
   if (changed) render();
 }
@@ -68,7 +75,9 @@ function controls() {
   $("auto").hidden = automatic;
   $("stop").hidden = !automatic;
   $("download").disabled = !state?.history?.length;
-  document.querySelectorAll("[data-step]").forEach((button) => (button.disabled = working));
+  document
+    .querySelectorAll("[data-step]")
+    .forEach((button) => (button.disabled = working));
 }
 async function perform(fn, label) {
   if (busy) return;
@@ -97,21 +106,24 @@ function actionTitle(action, text) {
   if (!action) return "No action selected";
   if (action.kind === "fill")
     return `Type${text ? ` “${text}”` : ""} in ${action.label || action.action}`;
-  if (action.kind === "select") return `Select ${action.label || action.action}`;
+  if (action.kind === "select")
+    return `Select ${action.label || action.action}`;
   if (action.kind === "click") return `Click ${action.label || action.action}`;
   return action.label || action.action;
 }
 function stepTitle(step) {
   const check = step.checks.find((c) => c.kind === "action") || step.checks[0];
   if (check?.kind === "value") return `Set ${check.label} to “${check.equals}”`;
-  if (check?.kind === "checked") return `${check.equals ? "Enable" : "Disable"} ${check.label}`;
+  if (check?.kind === "checked")
+    return `${check.equals ? "Enable" : "Disable"} ${check.label}`;
   if (check?.kind === "action") return `Click ${check.label}`;
   return step.instruction;
 }
 function presentation() {
   const activity = state?.activity;
   const action =
-    activity?.action || state?.page?.actions.find((a) => a.id === state.decision?.choice);
+    activity?.action ||
+    state?.page?.actions.find((a) => a.id === state.decision?.choice);
   const step = state?.checkpoints?.[state.plan_index];
   const detail = step
     ? `Step ${state.plan_index + 1} · ${stepTitle(step)}`
@@ -150,7 +162,9 @@ function presentation() {
     ],
     observing: [
       "CHECKING THE PAGE",
-      activity?.action ? "Checking the action’s result" : "Reading the current page",
+      activity?.action
+        ? "Checking the action’s result"
+        : "Reading the current page",
       "Looking for evidence that this step is complete.",
       "◎",
     ],
@@ -175,7 +189,8 @@ function presentation() {
     return [
       "NEEDS ATTENTION",
       "The run needs attention",
-      state.error || "An action failed. Review the last observed page before starting again.",
+      state.error ||
+        "An action failed. Review the last observed page before starting again.",
       "!",
     ];
   if (state?.decision)
@@ -220,7 +235,9 @@ function renderBrowser() {
   $("url").textContent = url || "No page open";
   $("url").title = url || "";
   $("page-title").textContent =
-    frame?.title || (url === page?.url ? page?.title : "Navigating…") || "Isolated browser";
+    frame?.title ||
+    (url === page?.url ? page?.title : "Navigating…") ||
+    "Isolated browser";
   $("feed-status").textContent = frame
     ? "REVIEW"
     : !image && page?.screenshot_status === "unavailable"
@@ -249,7 +266,9 @@ function renderBrowser() {
     ? "Reviewing a saved frame. The browser has not moved."
     : `${phase.charAt(0) + phase.slice(1).toLowerCase()} · ${detail}`;
   $("return-live").hidden = !frame;
-  $("return-live").textContent = stopped() ? "Return to final page" : "Return to live view";
+  $("return-live").textContent = stopped()
+    ? "Return to final page"
+    : "Return to live view";
   $("action-banner").dataset.review = Boolean(frame);
   $("frame-note").textContent = frame
     ? `Saved after ${frame.step} action${frame.step === 1 ? "" : "s"}`
@@ -260,16 +279,20 @@ function renderBrowser() {
         : `${state.history.length} actions performed`;
   $("empty").hidden = Boolean(image);
   $("screenshot").hidden = !image;
-  if (image && $("screenshot").getAttribute("src") !== image) $("screenshot").src = image;
+  if (image && $("screenshot").getAttribute("src") !== image)
+    $("screenshot").src = image;
   $("screenshot").alt = frame
     ? `Browser after action ${frame.step}`
     : "Current page in the agent’s browser";
   const selected =
-    state.activity?.action || page?.actions.find((a) => a.id === state.decision?.choice);
-  const showSelected = !state.activity || ["writing", "acting"].includes(state.activity.kind);
+    state.activity?.action ||
+    page?.actions.find((a) => a.id === state.decision?.choice);
+  const showSelected =
+    !state.activity || ["writing", "acting"].includes(state.activity.kind);
   const targets = new Map();
   for (const action of page?.actions || [])
-    if (action.rect && !targets.has(action.node)) targets.set(action.node, action);
+    if (action.rect && !targets.has(action.node))
+      targets.set(action.node, action);
   $("targets").innerHTML =
     frame || !image || url !== page?.url
       ? ""
@@ -284,7 +307,9 @@ function renderBrowser() {
 function resultFor(step) {
   const entry = state.history.find((h) => h.step === step);
   if (!entry) return "Before any actions";
-  const checks = state.checkpoints.filter((c) => c.verified?.action_count === step);
+  const checks = state.checkpoints.filter(
+    (c) => c.verified?.action_count === step,
+  );
   if (checks.length)
     return `${checks.length} checklist step${checks.length === 1 ? "" : "s"} verified`;
   return entry.page_changed === null
@@ -294,7 +319,12 @@ function resultFor(step) {
       : "No visible change";
 }
 function renderHistory() {
-  const key = JSON.stringify([state.run_id, state.frames, reviewStep, state.plan_index]);
+  const key = JSON.stringify([
+    state.run_id,
+    state.frames,
+    reviewStep,
+    state.plan_index,
+  ]);
   if (key === historyKey) return;
   const newFrame = state.frames?.length > $("history").children.length;
   historyKey = key;
@@ -318,11 +348,16 @@ function renderDetails() {
   const d = state.decision || state.decisions?.at(-1);
   $("action-count").textContent = `${state.elements.length} targets`;
   $("latency").textContent = d ? seconds(d.latency_ms) : "—";
-  $("confidence").textContent = d?.target_confidence != null ? percent(d.target_confidence) : "—";
+  $("confidence").textContent =
+    d?.target_confidence != null ? percent(d.target_confidence) : "—";
   $("completion").textContent = d?.operation || "—";
   const current = state.decision;
-  $("ranking-note").textContent = current ? "Current choice scores" : "Current page · unranked";
-  $("operation-choices").innerHTML = Object.entries(d?.operation_probabilities || {})
+  $("ranking-note").textContent = current
+    ? "Current choice scores"
+    : "Current page · unranked";
+  $("operation-choices").innerHTML = Object.entries(
+    d?.operation_probabilities || {},
+  )
     .sort((a, b) => b[1] - a[1])
     .map(
       ([name, p]) =>
@@ -331,7 +366,12 @@ function renderDetails() {
     .join("");
   const probability = (e) =>
     current?.target_probabilities[e.index] ??
-    Math.max(-1, ...(e.options || []).map((o) => current?.target_probabilities[o.index] ?? -1));
+    Math.max(
+      -1,
+      ...(e.options || []).map(
+        (o) => current?.target_probabilities[o.index] ?? -1,
+      ),
+    );
   $("choices").innerHTML = [...state.elements]
     .sort((a, b) => probability(b) - probability(a))
     .map((e) => {
@@ -381,14 +421,19 @@ function render() {
         : state.activity?.kind;
   document
     .querySelectorAll("[data-phase]")
-    .forEach((el) => el.classList.toggle("active", el.dataset.phase === activePhase));
+    .forEach((el) =>
+      el.classList.toggle("active", el.dataset.phase === activePhase),
+    );
   $("result-summary").textContent = state.history.length
     ? `${actionTitle(state.history.at(-1), state.history.at(-1).text)}. ${resultFor(state.history.length)}.`
     : "No actions yet. Choosing an action does not execute it.";
   $("task-result").hidden = !state.answer;
   $("answer").textContent = state.answer || "";
   $("answer-sources").replaceChildren(
-    ...(state.answer ? state.completion_reviews?.at(-1)?.evidence || [] : []).map((source) => {
+    ...(state.answer
+      ? state.completion_reviews?.at(-1)?.evidence || []
+      : []
+    ).map((source) => {
       const item = document.createElement("li");
       const link = document.createElement("a");
       link.textContent = source.quote;
@@ -461,7 +506,8 @@ async function runAutomatically() {
     for (let i = 0; i < state.max_steps * 2 && automatic && !stopped(); i++) {
       if (!state.decision) await call("predict");
       if (!automatic || stopped()) break;
-      if ($("pace").checked) await new Promise((resolve) => setTimeout(resolve, 1200));
+      if ($("pace").checked)
+        await new Promise((resolve) => setTimeout(resolve, 1200));
       if (!automatic) break;
       await call("act", { fingerprint: state.page.fingerprint });
     }
@@ -491,9 +537,14 @@ $("choose").addEventListener("click", () =>
   perform(() => call("predict"), "Choosing the next action…"),
 );
 $("execute").addEventListener("click", () =>
-  perform(() => call("act", { fingerprint: state.page.fingerprint }), "Executing the choice…"),
+  perform(
+    () => call("act", { fingerprint: state.page.fingerprint }),
+    "Executing the choice…",
+  ),
 );
-$("auto").addEventListener("click", () => perform(runAutomatically, "Running the browser…"));
+$("auto").addEventListener("click", () =>
+  perform(runAutomatically, "Running the browser…"),
+);
 $("stop").addEventListener("click", () => {
   automatic = false;
   paused = true;
@@ -514,9 +565,18 @@ $("return-live").addEventListener("click", () => {
 $("download").addEventListener("click", () => {
   const { page, ...rest } = state;
   const url = URL.createObjectURL(
-    new Blob([JSON.stringify({ ...rest, page: { ...page, screenshot: undefined } }, null, 2)], {
-      type: "application/json",
-    }),
+    new Blob(
+      [
+        JSON.stringify(
+          { ...rest, page: { ...page, screenshot: undefined } },
+          null,
+          2,
+        ),
+      ],
+      {
+        type: "application/json",
+      },
+    ),
   );
   const a = document.createElement("a");
   a.href = url;
@@ -556,27 +616,39 @@ function showSettings(settings) {
       ? "Saved · leave blank to keep"
       : "Optional for a local server";
     $(`${kind}-clear`).checked = false;
-    $(`${kind}-input-price`).value = settings[kind].pricing?.inputUsdPerMillion ?? "";
-    $(`${kind}-output-price`).value = settings[kind].pricing?.outputUsdPerMillion ?? "";
+    $(`${kind}-input-price`).value =
+      settings[kind].pricing?.inputUsdPerMillion ?? "";
+    $(`${kind}-output-price`).value =
+      settings[kind].pricing?.outputUsdPerMillion ?? "";
   }
-  $("model-tag").textContent = settings.decision.model || "Configure your models";
+  $("model-tag").textContent =
+    settings.decision.model || "Configure your models";
 }
 $("settings-form").addEventListener("submit", (event) => {
   event.preventDefault();
   perform(async () => {
     const body = {};
     for (const kind of ["decision", "text"]) {
-      body[kind] = { baseUrl: $(`${kind}-base`).value, model: $(`${kind}-model`).value };
+      body[kind] = {
+        baseUrl: $(`${kind}-base`).value,
+        model: $(`${kind}-model`).value,
+      };
       const input = $(`${kind}-input-price`).value,
         output = $(`${kind}-output-price`).value;
       if (Boolean(input) !== Boolean(output))
-        throw Error("Enter both token prices, or leave both blank for unknown.");
+        throw Error(
+          "Enter both token prices, or leave both blank for unknown.",
+        );
       body[kind].pricing =
         input && output
-          ? { inputUsdPerMillion: Number(input), outputUsdPerMillion: Number(output) }
+          ? {
+              inputUsdPerMillion: Number(input),
+              outputUsdPerMillion: Number(output),
+            }
           : null;
       if ($(`${kind}-clear`).checked) body[kind].apiKey = "";
-      else if ($(`${kind}-key`).value) body[kind].apiKey = $(`${kind}-key`).value;
+      else if ($(`${kind}-key`).value)
+        body[kind].apiKey = $(`${kind}-key`).value;
     }
     const response = await fetch("/api/settings", {
       method: "POST",
@@ -619,7 +691,9 @@ fetch("/api/settings")
     const settings = await response.json();
     if (!response.ok) throw Error(settings.error || "Could not read settings");
     showSettings(settings);
-    $("model-settings").open = !(settings.decision.model && settings.text.model);
+    $("model-settings").open = !(
+      settings.decision.model && settings.text.model
+    );
   })
   .catch((error) => {
     $("settings-status").textContent = error.message;

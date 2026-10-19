@@ -8,7 +8,13 @@ import {
   postJson,
   validateChoice,
 } from "../src/model.js";
-import { chatResponse, choice, decisionResponse, page, provider } from "./helpers.js";
+import {
+  chatResponse,
+  choice,
+  decisionResponse,
+  page,
+  provider,
+} from "./helpers.js";
 import type { DecisionRequest, ModelCall } from "../src/types.js";
 
 const servers: Bun.Server<undefined>[] = [];
@@ -23,41 +29,58 @@ test.each(["ready", "invalid", "unauthorized"])(
     const p = provider(async (request) => {
       const path = new URL(request.url).pathname;
       requests.push(path);
-      if (mode === "unauthorized") return new Response("private-provider-message", { status: 401 });
+      if (mode === "unauthorized")
+        return new Response("private-provider-message", { status: 401 });
       if (mode === "invalid") return Response.json({ choices: [] });
       const body = await request.json();
       return path.endsWith("systemone")
         ? Response.json({
-            answers: { readiness: choice(body.questions.readiness.criteria, "ready") },
+            answers: {
+              readiness: choice(body.questions.readiness.criteria, "ready"),
+            },
           })
         : chatResponse({ ready: true, text: null });
     });
     servers.push(p.server);
     const results = await checkModels(async () => p.settings);
-    expect(results.map((check) => check.ok)).toEqual([mode === "ready", mode === "ready"]);
+    expect(results.map((check) => check.ok)).toEqual([
+      mode === "ready",
+      mode === "ready",
+    ]);
     expect(requests.sort()).toEqual(["/v1/chat/completions", "/v1/systemone"]);
     expect(JSON.stringify(results)).not.toContain("test-key");
     expect(JSON.stringify(results)).not.toContain("private-provider-message");
     if (mode === "unauthorized")
-      expect(results.every((check) => check.message.includes("401"))).toBe(true);
+      expect(results.every((check) => check.message.includes("401"))).toBe(
+        true,
+      );
   },
 );
 
-test.each(["unknown", "nan", "missing", "negative", "non_max", "confidence", "extra", "boolean"])(
-  "rejects malformed choice: %s",
-  (mutation) => {
-    const answer = choice({ a: "A", b: "B" }, "a");
-    if (mutation === "unknown") answer.choice = "invented";
-    if (mutation === "nan") answer.probabilities.a = NaN;
-    if (mutation === "missing") delete answer.probabilities.b;
-    if (mutation === "negative") answer.probabilities.b = -1;
-    if (mutation === "non_max") answer.choice = "b";
-    if (mutation === "confidence") answer.confidence = 5;
-    if (mutation === "extra") answer.probabilities.c = 0;
-    if (mutation === "boolean") (answer as unknown as Record<string, unknown>).confidence = true;
-    expect(() => validateChoice(answer, { a: "A", b: "B" })).toThrow("Invalid typed decision");
-  },
-);
+test.each([
+  "unknown",
+  "nan",
+  "missing",
+  "negative",
+  "non_max",
+  "confidence",
+  "extra",
+  "boolean",
+])("rejects malformed choice: %s", (mutation) => {
+  const answer = choice({ a: "A", b: "B" }, "a");
+  if (mutation === "unknown") answer.choice = "invented";
+  if (mutation === "nan") answer.probabilities.a = NaN;
+  if (mutation === "missing") delete answer.probabilities.b;
+  if (mutation === "negative") answer.probabilities.b = -1;
+  if (mutation === "non_max") answer.choice = "b";
+  if (mutation === "confidence") answer.confidence = 5;
+  if (mutation === "extra") answer.probabilities.c = 0;
+  if (mutation === "boolean")
+    (answer as unknown as Record<string, unknown>).confidence = true;
+  expect(() => validateChoice(answer, { a: "A", b: "B" })).toThrow(
+    "Invalid typed decision",
+  );
+});
 
 test("one element index has separate compatible operation heads and indexed native options", () => {
   const actions = page().actions;
@@ -109,7 +132,10 @@ test("one System One request carries all heads and ignores an invalid unused hea
     requests.push(body);
     return Response.json({
       ...decisionResponse(body),
-      answers: { ...decisionResponse(body).answers, click_target: { choice: "invented" } },
+      answers: {
+        ...decisionResponse(body).answers,
+        click_target: { choice: "invented" },
+      },
     });
   });
   servers.push(server);
@@ -136,7 +162,9 @@ test("CLICK cannot consume a TYPE_TEXT target", async () => {
     });
   });
   servers.push(server);
-  await expect(choose(page(), "Search", [], endpoint)).rejects.toThrow("Invalid typed decision");
+  await expect(choose(page(), "Search", [], endpoint)).rejects.toThrow(
+    "Invalid typed decision",
+  );
 });
 
 test("an unfinished checkpoint gets focused instructions and no terminal DONE choice", async () => {
@@ -145,7 +173,9 @@ test("an unfinished checkpoint gets focused instructions and no terminal DONE ch
     expect(body.questions.operation!.criteria).not.toHaveProperty("DONE");
     for (const question of Object.values(body.questions)) {
       expect(question.instructions).toContain("Current step: Click Go");
-      expect(question.instructions).toContain("current step has not passed verification");
+      expect(question.instructions).toContain(
+        "current step has not passed verification",
+      );
       expect(question.instructions).not.toContain("user's entire goal");
     }
     return Response.json(decisionResponse(body, "CLICK", "2"));
@@ -168,7 +198,10 @@ test.each([
   servers.push(server);
   const state = page();
   await expect(
-    fieldText(fieldContext("Find a hotel", state.actions[0]!, state, []), endpoint),
+    fieldText(
+      fieldContext("Find a hotel", state.actions[0]!, state, []),
+      endpoint,
+    ),
   ).rejects.toThrow("nothing typed");
 });
 
@@ -178,8 +211,12 @@ test("local helper can omit authentication; quoted goal text still calls the hel
     calls++;
     expect(request.headers.has("authorization")).toBe(false);
     const body = await request.json();
-    expect(JSON.parse(body.messages[1].content).goal).toBe('Search for "Lisbon"');
-    return Response.json({ choices: [{ message: { content: '{"text":"Lisbon"}' } }] });
+    expect(JSON.parse(body.messages[1].content).goal).toBe(
+      'Search for "Lisbon"',
+    );
+    return Response.json({
+      choices: [{ message: { content: '{"text":"Lisbon"}' } }],
+    });
   });
   servers.push(server);
   const state = page();
@@ -203,8 +240,12 @@ test("HTTP errors redact provider bodies and authenticated redirects are refused
       : Response.redirect(`${other.endpoint.baseUrl}/sink`),
   );
   servers.push(other.server, first.server);
-  await expect(postJson(first.endpoint, "error", {})).rejects.toThrow("HTTP 401");
-  await expect(postJson(first.endpoint, "redirect", {})).rejects.toThrow("connection failed");
+  await expect(postJson(first.endpoint, "error", {})).rejects.toThrow(
+    "HTTP 401",
+  );
+  await expect(postJson(first.endpoint, "redirect", {})).rejects.toThrow(
+    "connection failed",
+  );
   expect(forwarded).toBe(0);
 });
 
@@ -213,10 +254,9 @@ test("null is a valid missing-value result and is not repaired", async () => {
   const p = provider(async (request) => {
     calls++;
     const body = await request.json();
-    expect(body.response_format.json_schema.schema.properties.text.anyOf).toEqual([
-      { type: "string" },
-      { type: "null" },
-    ]);
+    expect(
+      body.response_format.json_schema.schema.properties.text.anyOf,
+    ).toEqual([{ type: "string" }, { type: "null" }]);
     return chatResponse({ text: null });
   });
   servers.push(p.server);
@@ -272,13 +312,23 @@ test.each(["http", "envelope"])(
       ++requests < 3
         ? kind === "http"
           ? new Response("sensitive body", { status: 503 })
-          : Response.json({ error: { code: "overloaded", message: "sensitive body" } })
-        : Response.json({ ok: true, usage: { input_tokens: 5, output_tokens: 2 } }),
+          : Response.json({
+              error: { code: "overloaded", message: "sensitive body" },
+            })
+        : Response.json({
+            ok: true,
+            usage: { input_tokens: 5, output_tokens: 2 },
+          }),
     );
     servers.push(p.server);
-    expect((await postJson(p.endpoint, "systemone", {}, (call) => calls.push(call))).ok).toBe(true);
+    expect(
+      (await postJson(p.endpoint, "systemone", {}, (call) => calls.push(call)))
+        .ok,
+    ).toBe(true);
     expect(calls).toHaveLength(3);
-    expect(calls[0]!.outcome).toBe(kind === "http" ? "http_error" : "provider_error");
+    expect(calls[0]!.outcome).toBe(
+      kind === "http" ? "http_error" : "provider_error",
+    );
     expect(JSON.stringify(calls)).not.toContain("sensitive body");
     expect(JSON.stringify(calls)).not.toContain("test-key");
   },
@@ -288,10 +338,14 @@ test("permanent HTTP-200 errors fail once without leaking provider details", asy
   let count = 0;
   const p = provider(() => {
     count++;
-    return Response.json({ error: { code: "invalid_api_key", message: "secret-key" } });
+    return Response.json({
+      error: { code: "invalid_api_key", message: "secret-key" },
+    });
   });
   servers.push(p.server);
-  await expect(postJson(p.endpoint, "systemone", {})).rejects.toThrow("error response");
+  await expect(postJson(p.endpoint, "systemone", {})).rejects.toThrow(
+    "error response",
+  );
   expect(count).toBe(1);
 });
 
@@ -332,19 +386,30 @@ test("decision input includes observation readiness and truncation", async () =>
   });
   servers.push(p.server);
   const state = page();
-  Object.assign(state, { readiness: "loading", omitted_actions: 17, discovery_limited: true });
+  Object.assign(state, {
+    readiness: "loading",
+    omitted_actions: 17,
+    discovery_limited: true,
+  });
   await choose(state, "Wait for the form", [], p.endpoint, false);
 });
 
 test("request telemetry snapshots pricing without leaking credentials", async () => {
   const p = provider(() => {
     p.endpoint.pricing!.inputUsdPerMillion = 99;
-    return Response.json({ usage: { prompt_tokens: 10, completion_tokens: 5 } });
+    return Response.json({
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    });
   });
   servers.push(p.server);
   p.endpoint.pricing = { inputUsdPerMillion: 1, outputUsdPerMillion: 2 };
   const calls: ModelCall[] = [];
-  await postJson(p.endpoint, "chat/completions", {}, (call) => calls.push(call));
-  expect(calls[0]!.pricing).toEqual({ inputUsdPerMillion: 1, outputUsdPerMillion: 2 });
+  await postJson(p.endpoint, "chat/completions", {}, (call) =>
+    calls.push(call),
+  );
+  expect(calls[0]!.pricing).toEqual({
+    inputUsdPerMillion: 1,
+    outputUsdPerMillion: 2,
+  });
   expect(JSON.stringify(calls)).not.toContain("test-key");
 });

@@ -1,11 +1,17 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { chromium } from "playwright";
-import type { Browser as PlaywrightBrowser, BrowserContext, CDPSession } from "playwright";
+import type {
+  Browser as PlaywrightBrowser,
+  BrowserContext,
+  CDPSession,
+} from "playwright";
 import { httpUrl } from "./config.js";
 import type { Action, PageState } from "./types.js";
 
-const READ_STATE = await Bun.file(new URL("./snapshot.js", import.meta.url)).text();
+const READ_STATE = await Bun.file(
+  new URL("./snapshot.js", import.meta.url),
+).text();
 
 export class StalePage extends Error {}
 export interface BrowserDriver {
@@ -53,7 +59,10 @@ export class Browser implements BrowserDriver {
     private session: CDPSession,
   ) {}
 
-  static async create(url: string, options: BrowserOptions = {}): Promise<Browser> {
+  static async create(
+    url: string,
+    options: BrowserOptions = {},
+  ): Promise<Browser> {
     const targetUrl = httpUrl(url, "Page URL");
     let browser: PlaywrightBrowser;
     try {
@@ -74,8 +83,13 @@ export class Browser implements BrowserDriver {
       const page = await context.newPage();
       if (options.headless === false) await page.bringToFront();
       const session = await context.newCDPSession(page);
-      await session.send("Emulation.setFocusEmulationEnabled", { enabled: true });
-      await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await session.send("Emulation.setFocusEmulationEnabled", {
+        enabled: true,
+      });
+      await page.goto(targetUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
       return new Browser(browser, context, session);
     } catch {
       try {
@@ -83,18 +97,24 @@ export class Browser implements BrowserDriver {
       } finally {
         await browser.close();
       }
-      throw new Error("Could not open the requested page; the owned browser context was closed.");
+      throw new Error(
+        "Could not open the requested page; the owned browser context was closed.",
+      );
     }
   }
 
-  async evaluate<T = unknown>(expression: string, mutating = false): Promise<T> {
+  async evaluate<T = unknown>(
+    expression: string,
+    mutating = false,
+  ): Promise<T> {
     try {
       const result = await this.session.send("Runtime.evaluate", {
         expression,
         returnByValue: true,
         awaitPromise: true,
       });
-      if (result.exceptionDetails || !("value" in result.result)) throw new Error();
+      if (result.exceptionDetails || !("value" in result.result))
+        throw new Error();
       return result.result.value as T;
     } catch (error) {
       if (mutating)
@@ -109,7 +129,9 @@ export class Browser implements BrowserDriver {
             error.message,
           ))
       )
-        throw new Error("Browser disconnected. Start a fresh task to open a new browser.");
+        throw new Error(
+          "Browser disconnected. Start a fresh task to open a new browser.",
+        );
       throw new StalePage("Document changed during observation.");
     }
   }
@@ -149,7 +171,8 @@ export class Browser implements BrowserDriver {
         if (!state) throw new StalePage("Document is navigating.");
         if (
           attempt < 9 &&
-          (state.readiness === "loading" || (waitForControls && state.readiness === "empty"))
+          (state.readiness === "loading" ||
+            (waitForControls && state.readiness === "empty"))
         ) {
           await Bun.sleep(100);
           continue;
@@ -168,7 +191,8 @@ export class Browser implements BrowserDriver {
 
   private async capture(state: PageState) {
     state.screenshot_status = "unavailable";
-    state.screenshot_error = "Screenshot unavailable; DOM observation remains usable.";
+    state.screenshot_error =
+      "Screenshot unavailable; DOM observation remains usable.";
     if (this.screenshotRequest) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -183,7 +207,10 @@ export class Browser implements BrowserDriver {
       state.screenshot = await Promise.race([
         request,
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("Screenshot timeout")), 1000);
+          timer = setTimeout(
+            () => reject(new Error("Screenshot timeout")),
+            1000,
+          );
         }),
       ]);
       state.screenshot_status = "captured";
@@ -201,7 +228,11 @@ export class Browser implements BrowserDriver {
     do {
       await Bun.sleep(100);
       current = await this.observe();
-      if (current.fingerprint !== page.fingerprint && current.readiness !== "loading") break;
+      if (
+        current.fingerprint !== page.fingerprint &&
+        current.readiness !== "loading"
+      )
+        break;
     } while (Date.now() < deadline);
     if (screenshot) await this.capture(current);
     return current;
@@ -212,10 +243,15 @@ export class Browser implements BrowserDriver {
       if (!Number.isSafeInteger(action.node)) return false;
       const current = await this.evaluate(`(() => { const c=window.__jevFast;
         return c ? [c.pageKey(),c.guard(c.nodes.get(${action.node}))] : null; })()`);
-      return isDeepStrictEqual(current, [page.page_key, page.guards[String(action.node)]]);
+      return isDeepStrictEqual(current, [
+        page.page_key,
+        page.guards[String(action.node)],
+      ]);
     }
     return isDeepStrictEqual(
-      await this.evaluate(`(() => { const state=${READ_STATE}; return state?.marker ?? null; })()`),
+      await this.evaluate(
+        `(() => { const state=${READ_STATE}; return state?.marker ?? null; })()`,
+      ),
       page.marker,
     );
   }
@@ -223,7 +259,10 @@ export class Browser implements BrowserDriver {
   async act(action: Action, page: PageState, text?: string): Promise<void> {
     if (!page.actions.some((observed) => isDeepStrictEqual(action, observed)))
       throw new Error("Action is not from the observed page.");
-    if (action.kind === "fill" && (typeof text !== "string" || !text.trim() || text.length > 2000))
+    if (
+      action.kind === "fill" &&
+      (typeof text !== "string" || !text.trim() || text.length > 2000)
+    )
       throw new Error("Invalid field text; nothing typed.");
     if (!(await this.fresh(page, action)))
       throw new StalePage("Page changed since this decision. Observe again.");
@@ -240,14 +279,25 @@ export class Browser implements BrowserDriver {
         deltaY: action.delta,
       });
     } else {
-      if (!Number.isSafeInteger(action.node)) throw new Error("Invalid observed node.");
+      if (!Number.isSafeInteger(action.node))
+        throw new Error("Invalid observed node.");
       const nativeFill =
         action.kind === "fill" &&
-        ["date", "time", "datetime-local", "month", "week", "range", "color"].includes(
-          action.input_type ?? "",
-        );
+        [
+          "date",
+          "time",
+          "datetime-local",
+          "month",
+          "week",
+          "range",
+          "color",
+        ].includes(action.input_type ?? "");
       const expected = [page.page_key, page.guards[String(action.node)]];
-      const target = await this.evaluate<{ x: number; y: number; invalid?: boolean } | null>(
+      const target = await this.evaluate<{
+        x: number;
+        y: number;
+        invalid?: boolean;
+      } | null>(
         `(action => {
         const c=window.__jevFast, e=c?.nodes.get(action.node);
         if (!e?.isConnected || JSON.stringify([c.pageKey(),c.guard(e)])!==${JSON.stringify(JSON.stringify(expected))}) return null;
@@ -279,9 +329,12 @@ export class Browser implements BrowserDriver {
       })(${JSON.stringify(action)})`,
         action.kind === "select" || nativeFill,
       );
-      if (!target) throw new StalePage("Target changed or is covered. Observe again.");
+      if (!target)
+        throw new StalePage("Target changed or is covered. Observe again.");
       if (target.invalid)
-        throw new Error("Invalid native input value or constraint; nothing entered.");
+        throw new Error(
+          "Invalid native input value or constraint; nothing entered.",
+        );
       if (action.kind !== "select" && !nativeFill) {
         // CDP inputs are never retried: a rejected response can follow a successful mutation.
         for (const type of ["mousePressed", "mouseReleased"] as const) {
@@ -297,7 +350,8 @@ export class Browser implements BrowserDriver {
             `document.activeElement===window.__jevFast?.nodes.get(${action.node})`,
             true,
           );
-          if (!focused) throw new Error("Field lost focus after clicking; nothing typed.");
+          if (!focused)
+            throw new Error("Field lost focus after clicking; nothing typed.");
           const modifiers = process.platform === "darwin" ? 4 : 2;
           await this.session.send("Input.dispatchKeyEvent", {
             type: "keyDown",
@@ -324,19 +378,37 @@ export class Browser implements BrowserDriver {
     await this.session.send("Page.enable");
     let main = (await this.session.send("Page.getFrameTree")).frameTree.frame;
     let active = true;
-    const navigate = ({ frame }: { frame: { id: string; parentId?: string; url: string } }) => {
+    const navigate = ({
+      frame,
+    }: {
+      frame: { id: string; parentId?: string; url: string };
+    }) => {
       if (!frame.parentId) main = { ...main, ...frame };
     };
-    const withinDocument = ({ frameId, url }: { frameId: string; url: string }) => {
+    const withinDocument = ({
+      frameId,
+      url,
+    }: {
+      frameId: string;
+      url: string;
+    }) => {
       if (frameId === main.id) main.url = url;
     };
-    const frame = ({ data, sessionId }: { data: string; sessionId: number }) => {
+    const frame = ({
+      data,
+      sessionId,
+    }: {
+      data: string;
+      sessionId: number;
+    }) => {
       try {
         if (active) onFrame({ image: data, url: main.url });
       } catch {
         // Viewer failures must not interrupt browser input or frame acknowledgements.
       } finally {
-        void this.session.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
+        void this.session
+          .send("Page.screencastFrameAck", { sessionId })
+          .catch(() => {});
       }
     };
     const stop = async () => {

@@ -14,8 +14,15 @@ export function httpUrl(value: string, label: string): string {
   } catch {
     throw new Error(`${label} must be an absolute HTTP(S) URL.`);
   }
-  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.hash) {
-    throw new Error(`${label} must use HTTP(S), without credentials or a fragment.`);
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.hash
+  ) {
+    throw new Error(
+      `${label} must use HTTP(S), without credentials or a fragment.`,
+    );
   }
   return url.href;
 }
@@ -23,29 +30,51 @@ export function httpUrl(value: string, label: string): string {
 function endpoint(value: unknown): Endpoint {
   if (
     !object(value) ||
-    Object.keys(value).some((key) => !["baseUrl", "apiKey", "model", "pricing"].includes(key)) ||
+    Object.keys(value).some(
+      (key) => !["baseUrl", "apiKey", "model", "pricing"].includes(key),
+    ) ||
     typeof value.baseUrl !== "string" ||
     typeof value.apiKey !== "string" ||
     typeof value.model !== "string"
   ) {
-    throw new Error("Each model connection needs baseUrl, apiKey and model strings.");
+    throw new Error(
+      "Each model connection needs baseUrl, apiKey and model strings.",
+    );
   }
-  const baseUrl = httpUrl(value.baseUrl.trim(), "Model Base URL").replace(/\/+$/, "");
-  if (new URL(baseUrl).search || /\/(systemone|chat\/completions)$/.test(baseUrl)) {
+  const baseUrl = httpUrl(value.baseUrl.trim(), "Model Base URL").replace(
+    /\/+$/,
+    "",
+  );
+  if (
+    new URL(baseUrl).search ||
+    /\/(systemone|chat\/completions)$/.test(baseUrl)
+  ) {
     throw new Error(
       "Use the API base URL (usually ending in /v1), without a query or endpoint path.",
     );
   }
-  if (value.apiKey.length > 8192 || /[\r\n]/.test(value.apiKey) || value.model.length > 256)
+  if (
+    value.apiKey.length > 8192 ||
+    /[\r\n]/.test(value.apiKey) ||
+    value.model.length > 256
+  )
     throw new Error("Invalid API key or model identifier.");
-  const result: Endpoint = { baseUrl, apiKey: value.apiKey.trim(), model: value.model.trim() };
+  const result: Endpoint = {
+    baseUrl,
+    apiKey: value.apiKey.trim(),
+    model: value.model.trim(),
+  };
   if (value.pricing !== undefined && value.pricing !== null) {
     const pricing = value.pricing;
     if (
       !object(pricing) ||
       Object.keys(pricing).length !== 2 ||
       ![pricing.inputUsdPerMillion, pricing.outputUsdPerMillion].every(
-        (rate) => typeof rate === "number" && Number.isFinite(rate) && rate >= 0 && rate <= 1e9,
+        (rate) =>
+          typeof rate === "number" &&
+          Number.isFinite(rate) &&
+          rate >= 0 &&
+          rate <= 1e9,
       )
     )
       throw new Error(
@@ -100,7 +129,10 @@ export class SettingsStore {
         throw new Error("Local model settings contain invalid JSON.");
       }
     }
-    if (!object(value) || Object.keys(value).some((key) => !["decision", "text"].includes(key)))
+    if (
+      !object(value) ||
+      Object.keys(value).some((key) => !["decision", "text"].includes(key))
+    )
       throw new Error("Invalid model settings.");
     return { decision: endpoint(value.decision), text: endpoint(value.text) };
   }
@@ -112,10 +144,16 @@ export class SettingsStore {
       hasApiKey: Boolean(apiKey),
       ...(pricing ? { pricing } : {}),
     });
-    return { decision: publicEndpoint(settings.decision), text: publicEndpoint(settings.text) };
+    return {
+      decision: publicEndpoint(settings.decision),
+      text: publicEndpoint(settings.text),
+    };
   }
   async save(input: unknown) {
-    if (!object(input) || Object.keys(input).some((key) => !["decision", "text"].includes(key)))
+    if (
+      !object(input) ||
+      Object.keys(input).some((key) => !["decision", "text"].includes(key))
+    )
       throw new Error("Invalid model settings.");
     const previous = await this.read();
     const updated = { ...previous };
@@ -127,7 +165,8 @@ export class SettingsStore {
       if (
         patch.pricing === undefined &&
         ((patch.model !== undefined && patch.model !== previous[key].model) ||
-          (patch.baseUrl !== undefined && patch.baseUrl !== previous[key].baseUrl))
+          (patch.baseUrl !== undefined &&
+            patch.baseUrl !== previous[key].baseUrl))
       )
         delete merged.pricing;
       // Never carry a provider's credential to a newly selected endpoint implicitly.
@@ -141,7 +180,9 @@ export class SettingsStore {
     }
     await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
     const temporary = `${this.path}.${crypto.randomUUID()}.tmp`;
-    await writeFile(temporary, `${JSON.stringify(updated, null, 2)}\n`, { mode: 0o600 });
+    await writeFile(temporary, `${JSON.stringify(updated, null, 2)}\n`, {
+      mode: 0o600,
+    });
     await rename(temporary, this.path);
     return this.publicSettings();
   }

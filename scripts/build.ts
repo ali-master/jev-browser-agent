@@ -11,11 +11,15 @@ const result = await Bun.build({
   sourcemap: "external",
 });
 if (!result.success) throw new AggregateError(result.logs, "Build failed");
-const declarations = Bun.spawn(["bun", "--bun", "x", "tsc", "--project", "tsconfig.build.json"], {
-  stdout: "inherit",
-  stderr: "inherit",
-});
-if ((await declarations.exited) !== 0) throw new Error("Declaration build failed");
+const declarations = Bun.spawn(
+  ["bun", "--bun", "x", "tsc", "--project", "tsconfig.build.json"],
+  {
+    stdout: "inherit",
+    stderr: "inherit",
+  },
+);
+if ((await declarations.exited) !== 0)
+  throw new Error("Declaration build failed");
 await cp("src/snapshot.js", "dist/snapshot.js");
 await cp("src/static", "dist/static", { recursive: true });
 console.log("Built library, CLI, declarations and browser assets in dist/");

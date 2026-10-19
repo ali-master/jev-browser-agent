@@ -41,7 +41,9 @@ test("usage includes every physical request, every role and both token formats",
   expect(summary.by_model[0]!.requests).toBe(2);
   const rendered = formatUsage(summary);
   expect(rendered).toContain("usage unknown for 1 requests");
-  expect(rendered).toContain("unknown for 2 requests ($0.001120 priced subtotal)");
+  expect(rendered).toContain(
+    "unknown for 2 requests ($0.001120 priced subtotal)",
+  );
   expect(rendered).toContain("verification · chat");
 });
 
@@ -66,10 +68,11 @@ test("explicit zero prices differ from absent rates and changes apply per reques
   expect(summary.total.unknown_cost_requests).toBe(0);
   expect(summary.total.estimated_cost_usd).toBeCloseTo(0.00012, 8);
   expect(
-    summarizeUsage([call({ pricing: { inputUsdPerMillion: -1, outputUsdPerMillion: 1 } })]).total
-      .unknown_cost_requests,
+    summarizeUsage([
+      call({ pricing: { inputUsdPerMillion: -1, outputUsdPerMillion: 1 } }),
+    ]).total.unknown_cost_requests,
   ).toBe(1);
-  expect(summarizeUsage([call({ endpoint: "https://other.test" }), call()]).by_model).toHaveLength(
-    2,
-  );
+  expect(
+    summarizeUsage([call({ endpoint: "https://other.test" }), call()]).by_model,
+  ).toHaveLength(2);
 });

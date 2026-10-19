@@ -11,30 +11,47 @@ const empty = () => ({
   unknown_cost_requests: 0,
 });
 const tokens = (value: unknown) =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
 
 export function summarizeUsage(calls: (ModelCall & { role: ModelRole })[]) {
   const total = empty();
   const groups = new Map<
     string,
-    ReturnType<typeof empty> & { role: ModelRole; model: string; endpoint?: string }
+    ReturnType<typeof empty> & {
+      role: ModelRole;
+      model: string;
+      endpoint?: string;
+    }
   >();
   for (const call of calls) {
     const key = JSON.stringify([call.role, call.endpoint, call.model]);
     let group = groups.get(key);
     if (!group) {
-      group = { ...empty(), role: call.role, model: call.model, endpoint: call.endpoint };
+      group = {
+        ...empty(),
+        role: call.role,
+        model: call.model,
+        endpoint: call.endpoint,
+      };
       groups.set(key, group);
     }
     const input = tokens(call.usage.input_tokens ?? call.usage.prompt_tokens);
-    const output = tokens(call.usage.output_tokens ?? call.usage.completion_tokens);
+    const output = tokens(
+      call.usage.output_tokens ?? call.usage.completion_tokens,
+    );
     const rates = call.pricing;
     const priced =
       input !== null &&
       output !== null &&
       rates &&
       [rates.inputUsdPerMillion, rates.outputUsdPerMillion].every(
-        (rate) => typeof rate === "number" && Number.isFinite(rate) && rate >= 0 && rate <= 1e9,
+        (rate) =>
+          typeof rate === "number" &&
+          Number.isFinite(rate) &&
+          rate >= 0 &&
+          rate <= 1e9,
       );
     for (const row of [total, group]) {
       row.requests++;
@@ -45,7 +62,9 @@ export function summarizeUsage(calls: (ModelCall & { role: ModelRole })[]) {
       if (input === null || output === null) row.unknown_usage_requests++;
       if (priced)
         row.estimated_cost_usd +=
-          (input! * rates.inputUsdPerMillion + output! * rates.outputUsdPerMillion) / 1e6;
+          (input! * rates.inputUsdPerMillion +
+            output! * rates.outputUsdPerMillion) /
+          1e6;
       else row.unknown_cost_requests++;
     }
   }

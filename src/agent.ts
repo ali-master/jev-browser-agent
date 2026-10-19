@@ -34,10 +34,18 @@ export class Agent {
   readonly maxSteps: number;
   private startedAt: number | null = null;
   private busy = false;
-  private pendingText: { key: string; text: string; helper: ModelCall } | null = null;
+  private pendingText: { key: string; text: string; helper: ModelCall } | null =
+    null;
   private settings: SettingsReader;
-  private selection: { fingerprint: string; decision: Decision; action?: Action } | null = null;
-  private pendingObservation: { entry: HistoryEntry; fingerprint: string } | null = null;
+  private selection: {
+    fingerprint: string;
+    decision: Decision;
+    action?: Action;
+  } | null = null;
+  private pendingObservation: {
+    entry: HistoryEntry;
+    fingerprint: string;
+  } | null = null;
   private plannedAt = "";
   private revisionCount = 0;
   private reviewCount = 0;
@@ -48,9 +56,14 @@ export class Agent {
     goal: string,
     private options: AgentOptions = {},
   ) {
-    if (!goal.trim() || goal.length > 2000) throw new Error("Enter a goal of 1–2,000 characters.");
+    if (!goal.trim() || goal.length > 2000)
+      throw new Error("Enter a goal of 1–2,000 characters.");
     this.maxSteps = options.maxSteps ?? MAX_STEPS;
-    if (!Number.isSafeInteger(this.maxSteps) || this.maxSteps < 1 || this.maxSteps > 1000)
+    if (
+      !Number.isSafeInteger(this.maxSteps) ||
+      this.maxSteps < 1 ||
+      this.maxSteps > 1000
+    )
       throw new Error("maxSteps must be between 1 and 1000.");
     this.settings = options.settings ?? (() => new SettingsStore().read());
     this.state = {
@@ -75,13 +88,20 @@ export class Agent {
     };
   }
 
-  static async create(url: string, goal: string, options: AgentOptions = {}): Promise<Agent> {
-    if (!goal.trim() || goal.length > 2000) throw new Error("Enter a goal of 1–2,000 characters.");
+  static async create(
+    url: string,
+    goal: string,
+    options: AgentOptions = {},
+  ): Promise<Agent> {
+    if (!goal.trim() || goal.length > 2000)
+      throw new Error("Enter a goal of 1–2,000 characters.");
     const browser = await Browser.create(url, options);
     try {
       const agent = new Agent(
         browser,
-        await browser.observe(options.screenshots || Boolean(options.recordDir)),
+        await browser.observe(
+          options.screenshots || Boolean(options.recordDir),
+        ),
         goal,
         options,
       );
@@ -102,7 +122,9 @@ export class Agent {
     });
   }
   private elapsed() {
-    return Math.round(performance.now() - (this.startedAt ?? performance.now()));
+    return Math.round(
+      performance.now() - (this.startedAt ?? performance.now()),
+    );
   }
   private modelObserver(role: ModelRole) {
     return (call: ModelCall) => {
@@ -126,15 +148,21 @@ export class Agent {
     this.notify();
   }
 
-  async command(name: "predict" | "act" | "tick", body: { fingerprint?: string } = {}) {
+  async command(
+    name: "predict" | "act" | "tick",
+    body: { fingerprint?: string } = {},
+  ) {
     if (this.busy) throw new Error("A browser step is already running.");
-    if (stopped(this.state)) throw new Error("This run has stopped. Start a fresh run.");
+    if (stopped(this.state))
+      throw new Error("This run has stopped. Start a fresh run.");
     this.busy = true;
     this.startedAt ??= performance.now();
     try {
       if (name === "predict" || name === "tick") await this.predict();
       if ((name === "act" || name === "tick") && !stopped(this.state))
-        await this.act(name === "tick" ? this.state.page.fingerprint : body.fingerprint);
+        await this.act(
+          name === "tick" ? this.state.page.fingerprint : body.fingerprint,
+        );
     } catch (error) {
       this.state.decision = null;
       if (error instanceof StalePage) {
@@ -142,7 +170,9 @@ export class Agent {
         if (name !== "tick") throw error;
         try {
           this.acceptObservation(
-            await this.browser.observe(this.options.screenshots || this.state.record),
+            await this.browser.observe(
+              this.options.screenshots || this.state.record,
+            ),
           );
           if (this.state.checkpoints.length) await this.progress();
         } catch (recoveryError) {
@@ -178,7 +208,9 @@ export class Agent {
     state.decision = null;
     this.activity("observing");
     if (!(await this.browser.fresh(state.page)))
-      state.page = await this.browser.observe(this.options.screenshots || state.record);
+      state.page = await this.browser.observe(
+        this.options.screenshots || state.record,
+      );
     if (!state.checkpoints.length) {
       this.activity("planning");
       const { steps } = await createPlan(
@@ -210,7 +242,9 @@ export class Agent {
     this.selection = {
       fingerprint: observed.fingerprint,
       decision: structuredClone(state.decision),
-      action: observed.actions.find((action) => action.id === state.decision!.choice),
+      action: observed.actions.find(
+        (action) => action.id === state.decision!.choice,
+      ),
     };
     state.decisions.push({
       ...state.decision,
@@ -224,8 +258,15 @@ export class Agent {
     const state = this.state;
     if (!(await this.browser.fresh(state.page)))
       throw new StalePage("Page changed before checkpoint verification.");
-    state.plan_index = updateProgress(state.checkpoints, state.page, state.history);
-    if (state.checkpoints.length && state.plan_index === state.checkpoints.length) {
+    state.plan_index = updateProgress(
+      state.checkpoints,
+      state.page,
+      state.history,
+    );
+    if (
+      state.checkpoints.length &&
+      state.plan_index === state.checkpoints.length
+    ) {
       if (this.reviewCount++ >= 3) {
         state.status = "blocked";
         state.stop_reason = {
@@ -251,7 +292,10 @@ export class Agent {
         state.status = "done";
         delete state.stop_reason;
       } else if (review.missing_steps.length && this.revisionCount < 2) {
-        this.revise("The completion review found missing requirements.", review.missing_steps);
+        this.revise(
+          "The completion review found missing requirements.",
+          review.missing_steps,
+        );
         await this.progress();
       } else {
         state.status = "blocked";
@@ -314,7 +358,10 @@ export class Agent {
         remaining: state.checkpoints.slice(state.plan_index),
       },
     );
-    this.revise("An observed destination did not match the remaining plan.", steps);
+    this.revise(
+      "An observed destination did not match the remaining plan.",
+      steps,
+    );
     return true;
   }
 
@@ -325,24 +372,35 @@ export class Agent {
     this.selection = null;
     // Consume once before any model call or browser mutation.
     state.decision = null;
-    if (!decision || !selection) throw new Error("Observe and choose before acting.");
+    if (!decision || !selection)
+      throw new Error("Observe and choose before acting.");
     if (
       expectedFingerprint !== page.fingerprint ||
       selection.fingerprint !== page.fingerprint ||
       !isDeepStrictEqual(decision, selection.decision)
     )
-      throw new StalePage("Decision no longer matches its original observation. Choose again.");
+      throw new StalePage(
+        "Decision no longer matches its original observation. Choose again.",
+      );
     if (decision.choice === "DONE")
-      throw new Error("Completion requires verified checkpoints, not a model DONE response.");
+      throw new Error(
+        "Completion requires verified checkpoints, not a model DONE response.",
+      );
     if (decision.choice === "BLOCKED") {
       if (!(await this.browser.fresh(page)))
         throw new StalePage("Page changed since the decision.");
       this.activity("observing");
       const settled = this.browser.settle
-        ? await this.browser.settle(page, this.options.screenshots || state.record)
+        ? await this.browser.settle(
+            page,
+            this.options.screenshots || state.record,
+          )
         : await this.browser.observe(this.options.screenshots || state.record);
       state.page = settled;
-      if (settled.fingerprint !== page.fingerprint && settled.readiness !== "loading") {
+      if (
+        settled.fingerprint !== page.fingerprint &&
+        settled.readiness !== "loading"
+      ) {
         state.status = "ready";
         await this.progress();
         return;
@@ -376,15 +434,23 @@ export class Agent {
       this.pendingText = null;
       return;
     }
-    const action = page.actions.find((candidate) => candidate.id === decision.choice);
-    if (!action) throw new Error("Decision does not identify an observed action.");
+    const action = page.actions.find(
+      (candidate) => candidate.id === decision.choice,
+    );
+    if (!action)
+      throw new Error("Decision does not identify an observed action.");
     const semanticAction = (value: Action) =>
       "node" in value ? { ...value, rect: undefined } : value;
     if (
       !selection.action ||
-      !isDeepStrictEqual(semanticAction(action), semanticAction(selection.action))
+      !isDeepStrictEqual(
+        semanticAction(action),
+        semanticAction(selection.action),
+      )
     )
-      throw new StalePage("The selected control changed identity. Choose again.");
+      throw new StalePage(
+        "The selected control changed identity. Choose again.",
+      );
     if (state.history.length >= this.maxSteps) {
       state.status = "blocked";
       throw new Error("Reached the browser-action budget.");
@@ -411,7 +477,11 @@ export class Agent {
           this.modelObserver("text"),
         );
         helper = result.helper;
-        state.text_calls.push({ ...helper, field: action.label, value: result.text });
+        state.text_calls.push({
+          ...helper,
+          field: action.label,
+          value: result.text,
+        });
         if (result.text === null) {
           state.status = "blocked";
           state.stop_reason = {
@@ -454,7 +524,9 @@ export class Agent {
     this.pendingObservation = { entry, fingerprint: page.fingerprint };
     this.activity("observing", action, text);
     await this.record(false);
-    this.acceptObservation(await this.browser.observe(this.options.screenshots || state.record));
+    this.acceptObservation(
+      await this.browser.observe(this.options.screenshots || state.record),
+    );
     await this.progress();
   }
 
@@ -469,7 +541,9 @@ export class Agent {
     const repeated = this.state.history.slice(-3);
     this.state.status =
       repeated.length === 3 &&
-      repeated.every((item) => item.page_changed === false && item.kind !== "wait")
+      repeated.every(
+        (item) => item.page_changed === false && item.kind !== "wait",
+      )
         ? "blocked"
         : "ready";
     if (this.state.status === "blocked")
@@ -492,7 +566,10 @@ export class Agent {
     );
     if (screenshot && frame)
       await Bun.write(
-        resolve(directory, `${String(this.state.elapsed_ms).padStart(6, "0")}.jpg`),
+        resolve(
+          directory,
+          `${String(this.state.elapsed_ms).padStart(6, "0")}.jpg`,
+        ),
         Buffer.from(frame, "base64"),
       );
   }
@@ -501,7 +578,8 @@ export class Agent {
     while (!stopped(this.state)) yield await this.command("tick");
   }
   async close() {
-    if (this.busy) throw new Error("Wait for the current browser step before closing.");
+    if (this.busy)
+      throw new Error("Wait for the current browser step before closing.");
     this.pendingText = null;
     this.state.decision = null;
     if (!stopped(this.state)) this.state.status = "closed";

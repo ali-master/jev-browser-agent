@@ -9,7 +9,9 @@
   </head>
   <body>
     <header>
-      <a href="/" aria-label="Homepage" class="brand">Jev<span> Browser Agent</span></a>
+      <a href="/" aria-label="Homepage" class="brand"
+        >Jev<span> Browser Agent</span></a
+      >
       <div class="local"><span class="dot"></span> Local inspector</div>
     </header>
     <main>
@@ -17,15 +19,17 @@
         <div>
           <p class="eyebrow">JEV · BROWSER WORKSPACE</p>
           <h1>Watch the agent work.</h1>
-          <p>See what it chooses, what it does, and what changes on the page.</p>
+          <p>
+            See what it chooses, what it does, and what changes on the page.
+          </p>
         </div>
         <div class="model-tag" id="model-tag">Configure your models</div>
       </section>
       <details id="model-settings" open>
         <summary>Model settings · local or cloud</summary>
         <p class="muted">
-          Choose a decision model and a chat helper. Changes apply to the next request. Base URLs
-          usually end in /v1.
+          Choose a decision model and a chat helper. Changes apply to the next
+          request. Base URLs usually end in /v1.
         </p>
         <form id="settings-form">
           <div class="settings-grid">
@@ -54,7 +58,8 @@
                 placeholder="Optional for a local server"
               />
               <label class="overlay-control"
-                ><input id="decision-clear" type="checkbox" /> Clear saved API key</label
+                ><input id="decision-clear" type="checkbox" /> Clear saved API
+                key</label
               >
               <details>
                 <summary>Optional token prices · USD per million</summary>
@@ -102,7 +107,8 @@
                 placeholder="Optional for a local server"
               />
               <label class="overlay-control"
-                ><input id="text-clear" type="checkbox" /> Clear saved API key</label
+                ><input id="text-clear" type="checkbox" /> Clear saved API
+                key</label
               >
               <details>
                 <summary>Optional token prices · USD per million</summary>
@@ -128,19 +134,23 @@
             </fieldset>
           </div>
           <div class="settings-actions">
-            <button id="save-settings" type="submit">Save model settings</button>
-            <button id="check-models" type="button">Check saved connections</button>
+            <button id="save-settings" type="submit">
+              Save model settings
+            </button>
+            <button id="check-models" type="button">
+              Check saved connections
+            </button>
             <span id="settings-status" role="status"></span>
           </div>
           <p class="muted">
-            Keys stay on this computer and are sent only to the configured provider. Leave a key
-            blank to retain it. Changing a Base URL clears its old key unless you enter a
-            replacement.
+            Keys stay on this computer and are sent only to the configured
+            provider. Leave a key blank to retain it. Changing a Base URL clears
+            its old key unless you enter a replacement.
           </p>
           <ul id="connection-checks" aria-live="polite"></ul>
           <p class="muted">
-            Connection checks send small test requests to both saved providers. Provider charges may
-            apply.
+            Connection checks send small test requests to both saved providers.
+            Provider charges may apply.
           </p>
         </form>
       </details>
@@ -160,12 +170,19 @@
         </div>
         <div id="start-url-row" hidden>
           <label for="start-url">Starting page URL</label>
-          <input id="start-url" type="url" placeholder="https://example.com" spellcheck="false" />
+          <input
+            id="start-url"
+            type="url"
+            placeholder="https://example.com"
+            spellcheck="false"
+          />
         </div>
         <div class="task-row">
           <textarea id="goal" name="goal" rows="2">
 Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textarea
-          ><button type="submit" id="start" class="primary">Start task <span>↗</span></button>
+          ><button type="submit" id="start" class="primary">
+            Start task <span>↗</span>
+          </button>
         </div>
       </form>
       <div class="toolbar">
@@ -175,13 +192,16 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
         </div>
         <div class="controls">
           <label class="overlay-control"
-            ><input name="pace" id="pace" type="checkbox" checked /> Preview each action</label
+            ><input name="pace" id="pace" type="checkbox" checked /> Preview
+            each action</label
           >
           <label class="overlay-control"
-            ><input name="overlays" id="overlays" type="checkbox" /> All targets</label
+            ><input name="overlays" id="overlays" type="checkbox" /> All
+            targets</label
           ><button type="button" id="choose" disabled>Choose next</button
           ><button type="button" id="execute" disabled>Execute choice</button
-          ><button type="button" id="auto" class="primary" disabled>Run automatically</button
+          ><button type="button" id="auto" class="primary" disabled>
+            Run automatically</button
           ><button type="button" id="stop" hidden>Pause</button>
         </div>
       </div>
@@ -190,26 +210,35 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
         <div class="browser-panel">
           <div class="browser-bar">
             <div class="traffic"><b></b><b></b><b></b></div>
-            <span id="url">No page open</span><span class="live" id="feed-status">Connecting</span>
+            <span id="url">No page open</span
+            ><span class="live" id="feed-status">Connecting</span>
           </div>
           <div class="action-banner" id="action-banner" aria-live="polite">
             <span class="action-icon" id="action-icon">↗</span>
             <div>
               <strong id="action-summary">Your browser will appear here</strong
-              ><span id="action-detail">Start a task to follow the agent in real time.</span>
+              ><span id="action-detail"
+                >Start a task to follow the agent in real time.</span
+              >
             </div>
-            <button id="return-live" type="button" hidden>Return to live view</button>
+            <button id="return-live" type="button" hidden>
+              Return to live view
+            </button>
           </div>
           <div class="viewport" id="viewport">
             <div class="empty" id="empty">
               <p class="empty-symbol">[ ↗ ]</p>
               <h2>Watch the decision happen.</h2>
               <p>
-                Start a task to see a real browser, its available<br />actions, and the model's
-                choice.
+                Start a task to see a real browser, its available<br />actions,
+                and the model's choice.
               </p>
             </div>
-            <img id="screenshot" alt="Live screenshot of the controlled browser" hidden />
+            <img
+              id="screenshot"
+              alt="Live screenshot of the controlled browser"
+              hidden
+            />
             <div id="targets"></div>
           </div>
           <div class="browser-footer">
@@ -219,14 +248,16 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
         </div>
         <aside aria-label="Agent progress">
           <div class="progress-header">
-            <span class="eyebrow">AGENT PROGRESS</span><span id="progress-count">Not started</span>
+            <span class="eyebrow">AGENT PROGRESS</span
+            ><span id="progress-count">Not started</span>
           </div>
           <div class="progress-track"><div id="progress-bar"></div></div>
           <div class="current-action">
             <span class="phase-label" id="phase-label">READY</span>
             <h2 id="choice-title">Start with a task</h2>
             <p id="choice-detail">
-              The agent will make a checklist, then work through it one step at a time.
+              The agent will make a checklist, then work through it one step at
+              a time.
             </p>
             <span id="phase-time"></span>
           </div>
@@ -241,21 +272,32 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
             <span>Checked from the page</span>
           </div>
           <ol id="plan" class="plan">
-            <li class="plan-empty">Your steps will appear when the agent starts.</li>
+            <li class="plan-empty">
+              Your steps will appear when the agent starts.
+            </li>
           </ol>
           <div class="last-result" id="last-result">
             <span>LAST OBSERVED RESULT</span>
             <p id="result-summary">No actions yet.</p>
           </div>
           <details id="decision-details" class="decision-details">
-            <summary>Model details <span id="action-count">0 elements</span></summary>
+            <summary>
+              Model details <span id="action-count">0 elements</span>
+            </summary>
             <p class="muted">
-              Scores help explain the choice. They are not a guarantee of success.
+              Scores help explain the choice. They are not a guarantee of
+              success.
             </p>
             <div class="metrics">
-              <div><span>Decision time</span><strong id="latency">—</strong></div>
-              <div><span>Target score</span><strong id="confidence">—</strong></div>
-              <div><span>Operation</span><strong id="completion">—</strong></div>
+              <div>
+                <span>Decision time</span><strong id="latency">—</strong>
+              </div>
+              <div>
+                <span>Target score</span><strong id="confidence">—</strong>
+              </div>
+              <div>
+                <span>Operation</span><strong id="completion">—</strong>
+              </div>
             </div>
             <div id="operation-choices" class="operation-choices"></div>
             <p class="distribution-label">
@@ -263,7 +305,12 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
             </p>
             <div id="choices" class="choices"></div>
           </details>
-          <section id="task-result" class="last-result" hidden aria-live="polite">
+          <section
+            id="task-result"
+            class="last-result"
+            hidden
+            aria-live="polite"
+          >
             <h3>Verified result</h3>
             <p id="answer" dir="auto"></p>
             <ul id="answer-sources"></ul>
@@ -280,15 +327,20 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
         </div>
         <nav id="journey" aria-label="Pages visited"></nav>
         <div id="history" class="filmstrip">
-          <p class="muted">The starting page and each action will appear here.</p>
+          <p class="muted">
+            The starting page and each action will appear here.
+          </p>
         </div>
       </section>
       <details id="run-usage">
-        <summary>Model usage <span id="usage-summary">No requests yet</span></summary>
+        <summary>
+          Model usage <span id="usage-summary">No requests yet</span>
+        </summary>
         <p class="muted">
-          Includes planning, decisions, text, final verification and retries. Token counts are
-          reported subtotals. Prices use your saved rates; unknown requests are not free. Estimates
-          exclude provider discounts and fees.
+          Includes planning, decisions, text, final verification and retries.
+          Token counts are reported subtotals. Prices use your saved rates;
+          unknown requests are not free. Estimates exclude provider discounts
+          and fees.
         </p>
         <table class="usage-table">
           <caption>
@@ -307,7 +359,8 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
       </details>
       <details>
         <summary>What the model sees</summary>
-        <pre id="model-state">Start a demo to inspect its structured state.</pre>
+        <pre id="model-state">
+Start a demo to inspect its structured state.</pre>
       </details>
       <footer>
         <span>Jev Browser Agent · Bun · Based on Jev Ultrafast</span

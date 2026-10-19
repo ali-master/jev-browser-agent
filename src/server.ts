@@ -33,13 +33,24 @@ export function startServer(
   let textModel = "Not configured";
   let liveAvailable = false;
   let lastError: string | null = null;
-  let latestFrame: { image: string; url: string; run_id: string; captured_at: number } | null =
-    null;
-  const frames = new Map<number, { image: string; url: string; title: string }>();
+  let latestFrame: {
+    image: string;
+    url: string;
+    run_id: string;
+    captured_at: number;
+  } | null = null;
+  const frames = new Map<
+    number,
+    { image: string; url: string; title: string }
+  >();
   const viewers = new Set<ReadableStreamDefaultController<Uint8Array>>();
-  const subscriptions = new Map<ReadableStreamDefaultController<Uint8Array>, () => void>();
+  const subscriptions = new Map<
+    ReadableStreamDefaultController<Uint8Array>,
+    () => void
+  >();
   const encoder = new TextEncoder();
-  const json = (value: unknown, status = 200) => Response.json(value, { status, headers });
+  const json = (value: unknown, status = 200) =>
+    Response.json(value, { status, headers });
   const snapshot = () => ({
     ...(agent?.snapshot() ?? {
       page: null,
@@ -71,7 +82,9 @@ export function startServer(
     // Drop updates for slow viewers instead of queueing screenshots without a bound.
     if ((viewer.desiredSize ?? 0) <= 0) return;
     try {
-      viewer.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`));
+      viewer.enqueue(
+        encoder.encode(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`),
+      );
     } catch {
       subscriptions.get(viewer)?.();
     }
@@ -88,7 +101,11 @@ export function startServer(
         !frames.has(step) &&
         (step === 0 || agent.state.history.at(-1)?.page_changed !== null)
       )
-        frames.set(step, { image: page.screenshot, url: page.url, title: page.title });
+        frames.set(step, {
+          image: page.screenshot,
+          url: page.url,
+          title: page.title,
+        });
     }
     revision++;
     broadcast("state", snapshot());
@@ -128,7 +145,13 @@ export function startServer(
           dispose();
         },
       }),
-      { headers: { ...headers, "Content-Type": "text/event-stream", "X-Accel-Buffering": "no" } },
+      {
+        headers: {
+          ...headers,
+          "Content-Type": "text/event-stream",
+          "X-Accel-Buffering": "no",
+        },
+      },
     );
   };
   const server = Bun.serve({
@@ -140,7 +163,8 @@ export function startServer(
       const origin = `http://127.0.0.1:${server.port}`;
       if (
         request.headers.get("host") !== `127.0.0.1:${server.port}` ||
-        (request.headers.has("origin") && request.headers.get("origin") !== origin)
+        (request.headers.has("origin") &&
+          request.headers.get("origin") !== origin)
       )
         return json({ error: "Local inspector requests only." }, 403);
       const path = new URL(request.url).pathname;
@@ -149,7 +173,9 @@ export function startServer(
           if (path === "/api/state") return json(await responseState());
           if (path === "/api/events") return stream(request);
           if (path.startsWith(`/api/frames/${runId}/`)) {
-            const match = path.slice(`/api/frames/${runId}/`.length).match(/^(\d+)\.jpg$/);
+            const match = path
+              .slice(`/api/frames/${runId}/`.length)
+              .match(/^(\d+)\.jpg$/);
             const frame = match ? frames.get(Number(match[1])) : undefined;
             return frame
               ? new Response(Buffer.from(frame.image, "base64"), {
@@ -157,15 +183,23 @@ export function startServer(
                 })
               : json({ error: "Frame not found." }, 404);
           }
-          if (path === "/api/settings") return json(await store.publicSettings());
+          if (path === "/api/settings")
+            return json(await store.publicSettings());
           const file = files[path];
           if (!file) return json({ error: "Not found." }, 404);
           const content = await Bun.file(new URL(file[0], staticRoot)).text();
-          return new Response(path === "/" ? content.replace("__TOKEN__", token) : content, {
-            headers: { ...headers, "Content-Type": `${file[1]}; charset=utf-8` },
-          });
+          return new Response(
+            path === "/" ? content.replace("__TOKEN__", token) : content,
+            {
+              headers: {
+                ...headers,
+                "Content-Type": `${file[1]}; charset=utf-8`,
+              },
+            },
+          );
         }
-        if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+        if (request.method !== "POST")
+          return json({ error: "Method not allowed." }, 405);
         if (
           request.headers.get("x-demo-token") !== token ||
           !request.headers.get("content-type")?.startsWith("application/json")
@@ -182,7 +216,8 @@ export function startServer(
           ].includes(path)
         )
           return json({ error: "Not found." }, 404);
-        if (busy || shuttingDown) return json({ error: "A browser step is already running." }, 409);
+        if (busy || shuttingDown)
+          return json({ error: "A browser step is already running." }, 409);
         busy = true;
         lastError = null;
         try {
@@ -192,7 +227,8 @@ export function startServer(
           } catch {
             return json({ error: "Invalid JSON request." }, 400);
           }
-          if (!object(body)) return json({ error: "Expected a JSON object." }, 400);
+          if (!object(body))
+            return json({ error: "Expected a JSON object." }, 400);
           if (path === "/api/preflight")
             return json({ checks: await checkModels(() => store.read()) });
           if (path === "/api/settings") {
@@ -205,17 +241,22 @@ export function startServer(
           }
           if (path === "/api/reset") {
             const goal = typeof body.goal === "string" ? body.goal.trim() : "";
-            if (!goal || goal.length > 2000) throw new Error("Enter a goal of 1–2,000 characters.");
+            if (!goal || goal.length > 2000)
+              throw new Error("Enter a goal of 1–2,000 characters.");
             const scenario = body.scenario ?? "custom";
             if (!["custom", "travel", "research"].includes(String(scenario)))
               throw new Error("Unknown demo scenario.");
             const url =
-              scenario === "custom" ? body.url : `${origin}/fixture.html?scenario=${scenario}`;
+              scenario === "custom"
+                ? body.url
+                : `${origin}/fixture.html?scenario=${scenario}`;
             if (typeof url !== "string" || !url.trim())
               throw new Error("Enter a starting page URL.");
             const config = await store.read();
             if (!config.decision.model)
-              throw new Error("Configure the decision model in Model settings first.");
+              throw new Error(
+                "Configure the decision model in Model settings first.",
+              );
             if (!config.text.model)
               throw new Error(
                 "Configure the chat helper in Model settings first; it creates and verifies the task checklist.",
@@ -239,7 +280,11 @@ export function startServer(
             opening = 0;
             try {
               await (agent.browser as Browser).watchFrames((frame) => {
-                latestFrame = { ...frame, run_id: runId, captured_at: Date.now() };
+                latestFrame = {
+                  ...frame,
+                  run_id: runId,
+                  captured_at: Date.now(),
+                };
                 broadcast("frame", latestFrame);
               });
               liveAvailable = true;
@@ -249,7 +294,10 @@ export function startServer(
           } else {
             if (!agent) throw new Error("Start a task first.");
             await agent.command(path.slice(5) as "predict" | "act" | "tick", {
-              fingerprint: typeof body.fingerprint === "string" ? body.fingerprint : undefined,
+              fingerprint:
+                typeof body.fingerprint === "string"
+                  ? body.fingerprint
+                  : undefined,
             });
           }
           return json(await responseState());

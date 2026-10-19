@@ -1,5 +1,11 @@
 import { fingerprint } from "../src/browser.js";
-import type { ChoiceAnswer, DecisionRequest, Endpoint, PageState, Settings } from "../src/types.js";
+import type {
+  ChoiceAnswer,
+  DecisionRequest,
+  Endpoint,
+  PageState,
+  Settings,
+} from "../src/types.js";
 
 export function page(): PageState {
   const state: PageState = {
@@ -16,16 +22,40 @@ export function page(): PageState {
     omitted_actions: 0,
     fingerprint: "",
     actions: [
-      { id: "e1", kind: "fill", label: "Search", role: "textbox", value: "", node: 10 },
-      { id: "e2", kind: "click", label: "Open Search", role: "textbox", value: "", node: 10 },
-      { id: "e3", kind: "click", label: "Go", role: "button", value: "", node: 20 },
+      {
+        id: "e1",
+        kind: "fill",
+        label: "Search",
+        role: "textbox",
+        value: "",
+        node: 10,
+      },
+      {
+        id: "e2",
+        kind: "click",
+        label: "Open Search",
+        role: "textbox",
+        value: "",
+        node: 10,
+      },
+      {
+        id: "e3",
+        kind: "click",
+        label: "Go",
+        role: "button",
+        value: "",
+        node: 20,
+      },
       { id: "wait", kind: "wait", label: "Wait" },
     ],
   };
   state.fingerprint = fingerprint(state);
   return state;
 }
-export function choice(criteria: Record<string, unknown>, selected: string): ChoiceAnswer {
+export function choice(
+  criteria: Record<string, unknown>,
+  selected: string,
+): ChoiceAnswer {
   return {
     choice: selected,
     confidence: 1,
@@ -35,7 +65,9 @@ export function choice(criteria: Record<string, unknown>, selected: string): Cho
   };
 }
 export function chatResponse(output: unknown) {
-  return Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] });
+  return Response.json({
+    choices: [{ message: { content: JSON.stringify(output) } }],
+  });
 }
 
 export function completionResponse(body: { messages: { content: string }[] }) {
@@ -44,28 +76,41 @@ export function completionResponse(body: { messages: { content: string }[] }) {
   return chatResponse({
     complete: true,
     answer: "The requested task is complete.",
-    evidence: [{ url: source.url, quote: source.title || source.text.slice(0, 80) }],
+    evidence: [
+      { url: source.url, quote: source.title || source.text.slice(0, 80) },
+    ],
     missing_steps: [],
   });
 }
-export function decisionResponse(body: DecisionRequest, operation = "TYPE_TEXT", target = "1") {
+export function decisionResponse(
+  body: DecisionRequest,
+  operation = "TYPE_TEXT",
+  target = "1",
+) {
   const head = `${operation.toLowerCase()}_target`;
   return {
     model: body.model,
     answers: {
       operation: choice(body.questions.operation!.criteria, operation),
-      ...(body.questions[head] ? { [head]: choice(body.questions[head].criteria, target) } : {}),
+      ...(body.questions[head]
+        ? { [head]: choice(body.questions[head].criteria, target) }
+        : {}),
     },
   };
 }
-export function provider(handler: (request: Request) => Response | Promise<Response>) {
+export function provider(
+  handler: (request: Request) => Response | Promise<Response>,
+) {
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: handler });
   const endpoint: Endpoint = {
     baseUrl: `http://127.0.0.1:${server.port}/v1`,
     apiKey: "test-key",
     model: "test-model",
   };
-  const settings: Settings = { decision: { ...endpoint }, text: { ...endpoint } };
+  const settings: Settings = {
+    decision: { ...endpoint },
+    text: { ...endpoint },
+  };
   return { server, endpoint, settings };
 }
 

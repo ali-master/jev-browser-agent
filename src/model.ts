@@ -34,7 +34,9 @@ export async function postJson(
   observe?: ModelObserver,
 ): Promise<Record<string, unknown>> {
   if (!endpoint.model)
-    throw new Error("Set the model identifier in Settings or .env before running.");
+    throw new Error(
+      "Set the model identifier in Settings or .env before running.",
+    );
   for (let attempt = 0; attempt < 3; attempt++) {
     const started = performance.now();
     const pricing = endpoint.pricing ? { ...endpoint.pricing } : undefined;
@@ -47,7 +49,9 @@ export async function postJson(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(endpoint.apiKey ? { Authorization: `Bearer ${endpoint.apiKey}` } : {}),
+            ...(endpoint.apiKey
+              ? { Authorization: `Bearer ${endpoint.apiKey}` }
+              : {}),
           },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(60_000),
@@ -77,10 +81,16 @@ export async function postJson(
       try {
         result = await response.json();
       } catch {
-        throw new ProviderFailure("Model provider returned invalid JSON.", true);
+        throw new ProviderFailure(
+          "Model provider returned invalid JSON.",
+          true,
+        );
       }
       if (!object(result))
-        throw new ProviderFailure("Model provider returned an invalid response.", true);
+        throw new ProviderFailure(
+          "Model provider returned an invalid response.",
+          true,
+        );
       if (result.error !== undefined && result.error !== null) {
         outcome = "provider_error";
         const error = object(result.error) ? result.error : {};
@@ -104,11 +114,19 @@ export async function postJson(
       outcome = "response";
       return result;
     } catch (error) {
-      if (!(error instanceof ProviderFailure) || !error.retryable || attempt === 2) throw error;
+      if (
+        !(error instanceof ProviderFailure) ||
+        !error.retryable ||
+        attempt === 2
+      )
+        throw error;
     } finally {
       try {
         observe?.({
-          model: object(result) && typeof result.model === "string" ? result.model : endpoint.model,
+          model:
+            object(result) && typeof result.model === "string"
+              ? result.model
+              : endpoint.model,
           endpoint: new URL(endpoint.baseUrl).origin,
           latency_ms: Math.round(performance.now() - started),
           usage: object(result) && object(result.usage) ? result.usage : {},
@@ -125,8 +143,12 @@ export async function postJson(
   throw new Error("Model unavailable.");
 }
 
-export function validateChoice(answer: unknown, ids: Record<string, unknown>): ChoiceAnswer {
-  const invalid = () => new Error("Invalid typed decision response; no action executed.");
+export function validateChoice(
+  answer: unknown,
+  ids: Record<string, unknown>,
+): ChoiceAnswer {
+  const invalid = () =>
+    new Error("Invalid typed decision response; no action executed.");
   if (
     !object(answer) ||
     typeof answer.choice !== "string" ||
@@ -139,7 +161,9 @@ export function validateChoice(answer: unknown, ids: Record<string, unknown>): C
   if (
     Object.keys(probabilities).length !== Object.keys(ids).length ||
     Object.keys(ids).some((id) => !Object.hasOwn(probabilities, id)) ||
-    numbers.some((n) => typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 1)
+    numbers.some(
+      (n) => typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 1,
+    )
   )
     throw invalid();
   const values = Object.values(probabilities) as number[];
@@ -164,11 +188,18 @@ export async function checkModels(readSettings: SettingsReader) {
           const result = await postJson(endpoint, "systemone", {
             model: endpoint.model,
             state: "Connection check. The expected answer is ready.",
-            questions: { readiness: { type: "choice", instructions: "Choose ready.", criteria } },
+            questions: {
+              readiness: {
+                type: "choice",
+                instructions: "Choose ready.",
+                criteria,
+              },
+            },
           });
           if (
             !object(result.answers) ||
-            validateChoice(result.answers.readiness, criteria).choice !== "ready"
+            validateChoice(result.answers.readiness, criteria).choice !==
+              "ready"
           )
             throw new Error(
               "Expected a valid ready choice from /systemone. Check the decision model and server extension.",
@@ -197,15 +228,20 @@ export async function checkModels(readSettings: SettingsReader) {
             messages: [
               {
                 role: "user",
-                content: 'Connection check. Return only {"ready":true,"text":null}.',
+                content:
+                  'Connection check. Return only {"ready":true,"text":null}.',
               },
             ],
           });
-          const first = Array.isArray(result.choices) ? result.choices[0] : undefined;
+          const first = Array.isArray(result.choices)
+            ? result.choices[0]
+            : undefined;
           let value: unknown;
           try {
             value =
-              object(first) && object(first.message) && typeof first.message.content === "string"
+              object(first) &&
+              object(first.message) &&
+              typeof first.message.content === "string"
                 ? JSON.parse(first.message.content)
                 : null;
           } catch {
@@ -223,7 +259,8 @@ export async function checkModels(readSettings: SettingsReader) {
         }
       } catch (error) {
         ok = false;
-        message = error instanceof Error ? error.message : "Connection check failed.";
+        message =
+          error instanceof Error ? error.message : "Connection check failed.";
       }
       return {
         role,
@@ -242,11 +279,20 @@ export function actionSpace(actions: Action[]) {
   const indices = new Map<number, ElementView>();
   const targets: Partial<Record<TargetOperation, Record<string, Action>>> = {};
   const controls: Partial<Record<Operation, Action>> = {};
-  const operations = { click: "CLICK", fill: "TYPE_TEXT", select: "SELECT" } as const;
+  const operations = {
+    click: "CLICK",
+    fill: "TYPE_TEXT",
+    select: "SELECT",
+  } as const;
   for (const action of actions) {
     if (action.kind === "scroll" || action.kind === "wait") {
-      controls[action.kind === "wait" ? "WAIT" : action.delta < 0 ? "SCROLL_UP" : "SCROLL_DOWN"] =
-        action;
+      controls[
+        action.kind === "wait"
+          ? "WAIT"
+          : action.delta < 0
+            ? "SCROLL_UP"
+            : "SCROLL_DOWN"
+      ] = action;
       continue;
     }
     let element = indices.get(action.node);
@@ -272,7 +318,8 @@ export function actionSpace(actions: Action[]) {
     }
     const operation = operations[action.kind];
     const group = (targets[operation] ??= {});
-    if (!element.operations.includes(operation)) element.operations.push(operation);
+    if (!element.operations.includes(operation))
+      element.operations.push(operation);
     let target = element.index;
     if (action.kind === "select") {
       const options = (element.options ??= []);
@@ -294,7 +341,8 @@ export async function choose(
 ): Promise<Decision> {
   const { elements, targets, controls } = actionSpace(page.actions);
   const labels = {
-    CLICK: "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
+    CLICK:
+      "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
     TYPE_TEXT:
       "Enter or replace text in an editable field. A small LLM supplies the value from the goal.",
     SELECT: "Select an observed dropdown value.",
@@ -302,7 +350,8 @@ export async function choose(
   const operations: Record<string, string> = {};
   for (const operation of Object.keys(targets) as TargetOperation[])
     operations[operation] = labels[operation];
-  for (const [operation, action] of Object.entries(controls)) operations[operation] = action.label;
+  for (const [operation, action] of Object.entries(controls))
+    operations[operation] = action.label;
   if (allowDone) operations.DONE = "Every requirement is visibly satisfied.";
   operations.BLOCKED = "No supported operation can progress.";
   const instructions = allowDone
@@ -320,7 +369,12 @@ export async function choose(
       elements,
       recent_actions: history
         .slice(-10)
-        .map(({ action, kind, text, page_changed }) => ({ action, kind, text, page_changed })),
+        .map(({ action, kind, text, page_changed }) => ({
+          action,
+          kind,
+          text,
+          page_changed,
+        })),
     },
     questions: {
       operation: {
@@ -359,17 +413,23 @@ export async function choose(
   }
   const started = performance.now();
   const result = await postJson(endpoint, "systemone", request, observe);
-  if (!object(result.answers)) throw new Error("Decision provider did not return typed answers.");
+  if (!object(result.answers))
+    throw new Error("Decision provider did not return typed answers.");
   const answer = validateChoice(result.answers.operation, operations);
   const operation = answer.choice as Operation;
   const candidates = targets[operation as TargetOperation];
   // Only the selected operation's head can identify an executable target.
   const targetAnswer = candidates
-    ? validateChoice(result.answers[`${operation.toLowerCase()}_target`], candidates)
+    ? validateChoice(
+        result.answers[`${operation.toLowerCase()}_target`],
+        candidates,
+      )
     : null;
   const target = targetAnswer?.choice ?? null;
   const choice =
-    candidates && target ? candidates[target]!.id : (controls[operation]?.id ?? operation);
+    candidates && target
+      ? candidates[target]!.id
+      : (controls[operation]?.id ?? operation);
   return {
     choice,
     operation,
@@ -423,7 +483,9 @@ export function fieldContext(
       title: page.title,
       text: page.text.slice(0, 6000),
     },
-    recent_actions: history.slice(-6).map(({ action, text }) => ({ action, text })),
+    recent_actions: history
+      .slice(-6)
+      .map(({ action, text }) => ({ action, text })),
   };
 }
 
@@ -434,7 +496,8 @@ export async function fieldText(
 ): Promise<{ text: string | null; helper: ModelCall }> {
   const started = performance.now();
   for (let attempt = 0; attempt < 2; attempt++) {
-    const endpoint = typeof connection === "function" ? await connection() : connection;
+    const endpoint =
+      typeof connection === "function" ? await connection() : connection;
     const result = await postJson(
       endpoint,
       "chat/completions",
@@ -448,7 +511,9 @@ export async function fieldText(
             strict: true,
             schema: {
               type: "object",
-              properties: { text: { anyOf: [{ type: "string" }, { type: "null" }] } },
+              properties: {
+                text: { anyOf: [{ type: "string" }, { type: "null" }] },
+              },
               required: ["text"],
               additionalProperties: false,
             },
@@ -472,8 +537,14 @@ export async function fieldText(
     );
     let output: unknown;
     try {
-      const first = Array.isArray(result.choices) ? result.choices[0] : undefined;
-      if (!object(first) || !object(first.message) || typeof first.message.content !== "string")
+      const first = Array.isArray(result.choices)
+        ? result.choices[0]
+        : undefined;
+      if (
+        !object(first) ||
+        !object(first.message) ||
+        typeof first.message.content !== "string"
+      )
         throw new Error();
       output = JSON.parse(first.message.content);
     } catch {
@@ -483,7 +554,9 @@ export async function fieldText(
       !object(output) ||
       Object.keys(output).length !== 1 ||
       (output.text !== null &&
-        (typeof output.text !== "string" || !output.text.trim() || output.text.length > 2000))
+        (typeof output.text !== "string" ||
+          !output.text.trim() ||
+          output.text.length > 2000))
     )
       continue;
     return {

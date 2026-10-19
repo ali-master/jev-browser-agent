@@ -31,12 +31,16 @@ try {
   });
   const command = positionals[0] ?? "serve";
   if (values.help) console.log(help);
-  else if (positionals.length > 1 || !["serve", "run"].includes(command)) throw new Error(help);
+  else if (positionals.length > 1 || !["serve", "run"].includes(command))
+    throw new Error(help);
   else if (command === "serve") {
     const port = Number(values.port ?? process.env.PORT ?? 8766);
     if (!Number.isInteger(port) || port < 1 || port > 65535)
       throw new Error("Port must be between 1 and 65535.");
-    const inspector = startServer({ port, cdpUrl: process.env.BROWSER_CDP_URL });
+    const inspector = startServer({
+      port,
+      cdpUrl: process.env.BROWSER_CDP_URL,
+    });
     console.log(`Jev Browser Agent: ${inspector.url}`);
     let closing = false;
     const shutdown = async () => {

@@ -35,7 +35,9 @@ test("reads edited .env values afresh on every call", async () => {
 
 test("settings persist, redact keys, retain omitted keys, clear explicit empty keys and protect file permissions", async () => {
   const { directory, store } = await setup();
-  const saved = await store.save({ decision: { model: "jev", apiKey: "secret-one" } });
+  const saved = await store.save({
+    decision: { model: "jev", apiKey: "secret-one" },
+  });
   expect(JSON.stringify(saved)).not.toContain("secret-one");
   expect(saved.decision.hasApiKey).toBe(true);
   expect((await stat(store.path)).mode & 0o777).toBe(0o600);
@@ -46,7 +48,10 @@ test("settings persist, redact keys, retain omitted keys, clear explicit empty k
   expect((await restarted.read()).decision.apiKey).toBe("");
   await writeFile(
     store.path,
-    (await readFile(store.path, "utf8")).replace("jev-new", "externally-edited"),
+    (await readFile(store.path, "utf8")).replace(
+      "jev-new",
+      "externally-edited",
+    ),
   );
   expect((await store.read()).decision.model).toBe("externally-edited");
 });
@@ -56,7 +61,9 @@ test("changing a Base URL does not leak the previous provider key", async () => 
   await store.save({ decision: { apiKey: "cloud-secret" } });
   await store.save({ decision: { baseUrl: "https://api.typesafe.ai/v1" } });
   expect((await store.read()).decision.apiKey).toBe("");
-  await store.save({ decision: { baseUrl: "http://localhost:1234/v1", apiKey: "replacement" } });
+  await store.save({
+    decision: { baseUrl: "http://localhost:1234/v1", apiKey: "replacement" },
+  });
   expect((await store.read()).decision.apiKey).toBe("replacement");
 });
 
@@ -74,7 +81,9 @@ test("malformed saved settings fail closed without echoing file contents", async
   const { store } = await setup();
   await store.save({});
   await writeFile(store.path, "super-secret malformed JSON");
-  await expect(store.read()).rejects.toThrow("Local model settings contain invalid JSON.");
+  await expect(store.read()).rejects.toThrow(
+    "Local model settings contain invalid JSON.",
+  );
 });
 
 test("optional prices persist and clear on provider or model changes", async () => {

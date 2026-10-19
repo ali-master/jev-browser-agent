@@ -1,6 +1,15 @@
 import { afterEach, expect, test } from "bun:test";
-import { createPlan, reviewCompletion, updateProgress, validatePlan } from "../src/plan.js";
-import type { Checkpoint, CompletionCheck, HistoryEntry } from "../src/types.js";
+import {
+  createPlan,
+  reviewCompletion,
+  updateProgress,
+  validatePlan,
+} from "../src/plan.js";
+import type {
+  Checkpoint,
+  CompletionCheck,
+  HistoryEntry,
+} from "../src/types.js";
 import { chatResponse, completionResponse, page, provider } from "./helpers.js";
 
 const servers: Bun.Server<undefined>[] = [];
@@ -20,15 +29,27 @@ test("nullable checklist and review schemas work with string-only type parsers",
   const p = provider(async (request) => {
     const body = await request.json();
     if (!acceptsTypes(body.response_format.json_schema.schema))
-      return Response.json({ error: "'type' must be a string" }, { status: 400 });
+      return Response.json(
+        { error: "'type' must be a string" },
+        { status: 400 },
+      );
     return body.response_format.json_schema.name === "completion_review"
       ? completionResponse(body)
       : chatResponse({
-          steps: [{ instruction: "Read Search", checks: [{ kind: "title", includes: "Search" }] }],
+          steps: [
+            {
+              instruction: "Read Search",
+              checks: [{ kind: "title", includes: "Search" }],
+            },
+          ],
         });
   });
   servers.push(p.server);
-  const { steps } = await createPlan(page(), "Read Search", async () => p.endpoint);
+  const { steps } = await createPlan(
+    page(),
+    "Read Search",
+    async () => p.endpoint,
+  );
   const plan = steps.map((step) => ({
     ...step,
     started_at_action: null,
@@ -37,7 +58,14 @@ test("nullable checklist and review schemas work with string-only type parsers",
   }));
   expect(updateProgress(plan, page(), [])).toBe(1);
   expect(
-    (await reviewCompletion(page(), "Read Search", plan, async () => p.endpoint)).complete,
+    (
+      await reviewCompletion(
+        page(),
+        "Read Search",
+        plan,
+        async () => p.endpoint,
+      )
+    ).complete,
   ).toBe(true);
 });
 const checkpoints = (...steps: CompletionCheck[][]): Checkpoint[] =>
@@ -71,13 +99,20 @@ const click = (action: string): HistoryEntry => ({
 test.each([
   { steps: [] },
   {
-    steps: [{ instruction: "Submit", checks: [{ kind: "action", label: "Go", action: "click" }] }],
+    steps: [
+      {
+        instruction: "Submit",
+        checks: [{ kind: "action", label: "Go", action: "click" }],
+      },
+    ],
   },
   {
     steps: [
       {
         instruction: "Check",
-        checks: [{ kind: "checked", label: "Free cancellation", equals: "true" }],
+        checks: [
+          { kind: "checked", label: "Free cancellation", equals: "true" },
+        ],
       },
     ],
   },
@@ -92,10 +127,24 @@ test.each([
       },
     ],
   },
-  { steps: [{ instruction: "Go", checks: [{ kind: "script", code: "document.title='done'" }] }] },
-  { steps: [{ instruction: "Read", checks: [{ kind: "title", includes: "" }] }] },
   {
-    steps: [{ instruction: "Read", checks: [{ kind: "title", includes: "done", selector: "h1" }] }],
+    steps: [
+      {
+        instruction: "Go",
+        checks: [{ kind: "script", code: "document.title='done'" }],
+      },
+    ],
+  },
+  {
+    steps: [{ instruction: "Read", checks: [{ kind: "title", includes: "" }] }],
+  },
+  {
+    steps: [
+      {
+        instruction: "Read",
+        checks: [{ kind: "title", includes: "done", selector: "h1" }],
+      },
+    ],
   },
 ])("rejects unverifiable or executable model output: %j", (value) => {
   expect(() => validatePlan(value)).toThrow();
@@ -136,7 +185,11 @@ test("a corrected checklist keeps both model calls without credentials", async (
     ),
   );
   servers.push(transport.server);
-  const result = await createPlan(page(), "Search Lisbon", async () => transport.endpoint);
+  const result = await createPlan(
+    page(),
+    "Search Lisbon",
+    async () => transport.endpoint,
+  );
   expect(result.calls).toHaveLength(2);
   expect(result.steps).toHaveLength(1);
   expect(JSON.stringify(result)).not.toContain("test-key");
@@ -234,7 +287,9 @@ test("ambiguous duplicate field labels cannot produce completion evidence", () =
     role: "textbox",
     value: "Lisbon",
   });
-  const steps = checkpoints([{ kind: "value", label: "Search", equals: "Lisbon" }]);
+  const steps = checkpoints([
+    { kind: "value", label: "Search", equals: "Lisbon" },
+  ]);
   expect(updateProgress(steps, state, [])).toBe(0);
 });
 
@@ -295,54 +350,69 @@ test("action text checks must come from the goal, not invented counts or message
       },
     ],
   };
-  expect(() => validatePlan(plan, "Search Lisbon")).toThrow("guesses an action's text outcome");
-  expect(validatePlan(plan, 'Click Search and wait for "3 places"')).toHaveLength(1);
+  expect(() => validatePlan(plan, "Search Lisbon")).toThrow(
+    "guesses an action's text outcome",
+  );
+  expect(
+    validatePlan(plan, 'Click Search and wait for "3 places"'),
+  ).toHaveLength(1);
 });
 
-test.each(["mismatched ref", "invented ref", "checkbox value", "button checked"])(
-  "rejects a planner's invalid observed-control binding: %s",
-  (mode) => {
-    const state = page();
-    Object.assign(state.actions[0]!, { ref: "fixture-document:10", scope: "Search form" });
-    state.actions.push({
-      id: "e4",
-      kind: "click",
-      label: "Refund",
-      role: "checkbox",
-      node: 30,
-      checked: "false",
-      value: "on",
-      ref: "fixture-document:30",
-    });
-    let check: CompletionCheck = {
-      kind: "value",
-      label: "Search",
-      equals: "Lisbon",
-      ref: "fixture-document:10",
-      scope: "Search form",
-    };
-    if (mode === "mismatched ref") check.ref = "fixture-document:30";
-    if (mode === "invented ref") check.ref = "fixture-document:999";
-    if (mode === "checkbox value") check = { kind: "value", label: "Refund", equals: "on" };
-    if (mode === "button checked") check = { kind: "checked", label: "Go", equals: true };
-    expect(() =>
-      validatePlan(
-        { steps: [{ instruction: "Complete the field", checks: [check] }] },
-        "Find Lisbon",
-        state,
-      ),
-    ).toThrow();
-  },
-);
+test.each([
+  "mismatched ref",
+  "invented ref",
+  "checkbox value",
+  "button checked",
+])("rejects a planner's invalid observed-control binding: %s", (mode) => {
+  const state = page();
+  Object.assign(state.actions[0]!, {
+    ref: "fixture-document:10",
+    scope: "Search form",
+  });
+  state.actions.push({
+    id: "e4",
+    kind: "click",
+    label: "Refund",
+    role: "checkbox",
+    node: 30,
+    checked: "false",
+    value: "on",
+    ref: "fixture-document:30",
+  });
+  let check: CompletionCheck = {
+    kind: "value",
+    label: "Search",
+    equals: "Lisbon",
+    ref: "fixture-document:10",
+    scope: "Search form",
+  };
+  if (mode === "mismatched ref") check.ref = "fixture-document:30";
+  if (mode === "invented ref") check.ref = "fixture-document:999";
+  if (mode === "checkbox value")
+    check = { kind: "value", label: "Refund", equals: "on" };
+  if (mode === "button checked")
+    check = { kind: "checked", label: "Go", equals: true };
+  expect(() =>
+    validatePlan(
+      { steps: [{ instruction: "Complete the field", checks: [check] }] },
+      "Find Lisbon",
+      state,
+    ),
+  ).toThrow();
+});
 
 test("a mismatched field reference gets one repair with the observed context", async () => {
   const state = page();
-  Object.assign(state.actions[0]!, { ref: "fixture-document:10", scope: "Search form" });
+  Object.assign(state.actions[0]!, {
+    ref: "fixture-document:10",
+    scope: "Search form",
+  });
   let calls = 0;
   const p = provider(async (request) => {
     const body = await request.json();
     calls++;
-    if (calls === 2) expect(body.messages.at(-1).content).toContain("SAME observed element");
+    if (calls === 2)
+      expect(body.messages.at(-1).content).toContain("SAME observed element");
     return chatResponse({
       steps: [
         {
@@ -363,7 +433,9 @@ test("a mismatched field reference gets one repair with the observed context", a
   servers.push(p.server);
   const plan = await createPlan(state, "Enter Lisbon", async () => p.endpoint);
   expect(calls).toBe(2);
-  expect((plan.steps[0]!.checks[0] as { ref: string }).ref).toBe("fixture-document:10");
+  expect((plan.steps[0]!.checks[0] as { ref: string }).ref).toBe(
+    "fixture-document:10",
+  );
   expect(
     validatePlan(
       {
@@ -371,7 +443,13 @@ test("a mismatched field reference gets one repair with the observed context", a
           {
             instruction: "Enter on next page",
             checks: [
-              { kind: "value", label: "Unseen field", equals: "Lisbon", ref: null, scope: null },
+              {
+                kind: "value",
+                label: "Unseen field",
+                equals: "Lisbon",
+                ref: null,
+                scope: null,
+              },
             ],
           },
         ],

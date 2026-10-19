@@ -107,7 +107,10 @@ const PLAN_FORMAT = {
                       additionalProperties: false,
                       required: ["kind", "includes"],
                       properties: {
-                        kind: { type: "string", enum: ["title", "url", "text"] },
+                        kind: {
+                          type: "string",
+                          enum: ["title", "url", "text"],
+                        },
                         includes: { type: "string" },
                       },
                     },
@@ -128,12 +131,19 @@ const keys = (value: Record<string, unknown>, expected: string[]) =>
   Object.keys(value).length === expected.length &&
   expected.every((key) => Object.hasOwn(value, key));
 const controlKeys = (value: Record<string, unknown>, expected: string[]) =>
-  keys(value, [...expected, ...["ref", "scope"].filter((key) => Object.hasOwn(value, key))]) &&
+  keys(value, [
+    ...expected,
+    ...["ref", "scope"].filter((key) => Object.hasOwn(value, key)),
+  ]) &&
   [value.ref, value.scope].every(
     (value) => value === undefined || value === null || nonempty(value),
   );
 
-export function validatePlan(value: unknown, goal = "", page?: PageState): TaskStep[] {
+export function validatePlan(
+  value: unknown,
+  goal = "",
+  page?: PageState,
+): TaskStep[] {
   if (
     !object(value) ||
     !keys(value, ["steps"]) ||
@@ -151,7 +161,9 @@ export function validatePlan(value: unknown, goal = "", page?: PageState): TaskS
       step.checks.length < 1 ||
       step.checks.length > 4
     )
-      throw new Error("Each checklist step needs an instruction and 1–4 checks.");
+      throw new Error(
+        "Each checklist step needs an instruction and 1–4 checks.",
+      );
     const checks = step.checks;
     for (const check of checks) {
       if (!object(check)) throw new Error("Invalid completion check.");
@@ -172,14 +184,18 @@ export function validatePlan(value: unknown, goal = "", page?: PageState): TaskS
                 keys(check, ["kind", "includes"]) &&
                 nonempty(check.includes);
       if (!valid)
-        throw new Error("Completion checks must use only the documented kinds and exact keys.");
+        throw new Error(
+          "Completion checks must use only the documented kinds and exact keys.",
+        );
       if (page && ["value", "checked", "action"].includes(String(check.kind))) {
         const elements = actionSpace(page.actions).elements;
         const matches = elements.filter(
           (element) =>
             normalized(element.label) === normalized(check.label as string) &&
             (!check.ref || element.ref === check.ref) &&
-            (!check.scope || normalized(element.scope ?? "") === normalized(check.scope as string)),
+            (!check.scope ||
+              normalized(element.scope ?? "") ===
+                normalized(check.scope as string)),
         );
         if (check.ref && matches.length !== 1)
           throw new Error(
@@ -193,7 +209,8 @@ export function validatePlan(value: unknown, goal = "", page?: PageState): TaskS
               : check.kind === "action"
                 ? element.operations.includes("CLICK")
                 : element.operations.some(
-                    (operation) => operation === "TYPE_TEXT" || operation === "SELECT",
+                    (operation) =>
+                      operation === "TYPE_TEXT" || operation === "SELECT",
                   ),
           )
         )
@@ -227,7 +244,9 @@ export function validatePlan(value: unknown, goal = "", page?: PageState): TaskS
       checks.some(
         (check) =>
           check.kind === "text" &&
-          !normalized(goal).toLowerCase().includes(normalized(check.includes).toLowerCase()),
+          !normalized(goal)
+            .toLowerCase()
+            .includes(normalized(check.includes).toLowerCase()),
       )
     )
       throw new Error(
@@ -298,14 +317,21 @@ export async function createPlan(
     });
     let output: unknown;
     try {
-      const first = Array.isArray(result.choices) ? result.choices[0] : undefined;
-      if (!object(first) || !object(first.message) || typeof first.message.content !== "string")
+      const first = Array.isArray(result.choices)
+        ? result.choices[0]
+        : undefined;
+      if (
+        !object(first) ||
+        !object(first.message) ||
+        typeof first.message.content !== "string"
+      )
         throw new Error();
       previous = first.message.content;
       output = JSON.parse(previous);
     } catch {
       previous = "Invalid JSON";
-      correction = "Your last response was not valid JSON. Return the documented JSON checklist.";
+      correction =
+        "Your last response was not valid JSON. Return the documented JSON checklist.";
       continue;
     }
     try {
@@ -329,14 +355,17 @@ function controlMatches(
     (element) =>
       normalized(element.label) === normalized(check.label) &&
       (!check.ref || element.ref === check.ref) &&
-      (!check.scope || normalized(element.scope ?? "") === normalized(check.scope)),
+      (!check.scope ||
+        normalized(element.scope ?? "") === normalized(check.scope)),
   );
-  if (!matches.length) return check.ref?.startsWith(`${page.document_id}:`) ? false : null;
+  if (!matches.length)
+    return check.ref?.startsWith(`${page.document_id}:`) ? false : null;
   if (matches.length !== 1) return false;
   const element = matches[0]!;
   return check.kind === "checked"
     ? element.checked === String(check.equals)
-    : element.value !== undefined && normalized(element.value) === normalized(check.equals);
+    : element.value !== undefined &&
+        normalized(element.value) === normalized(check.equals);
 }
 
 export function updateProgress(
@@ -381,7 +410,8 @@ export function updateProgress(
                 entry.kind === check.action &&
                 normalized(entry.action) === normalized(check.label) &&
                 (!check.ref || entry.ref === check.ref) &&
-                (!check.scope || normalized(entry.scope ?? "") === normalized(check.scope)),
+                (!check.scope ||
+                  normalized(entry.scope ?? "") === normalized(check.scope)),
             )
         );
       return normalized(page[check.kind]).includes(normalized(check.includes));
@@ -407,7 +437,9 @@ export async function reviewCompletion(
   const sources = [
     { url: page.url, title: page.title, text: page.text.slice(0, 3000) },
     ...checkpoints.flatMap((step) =>
-      step.verified?.evidence ? [{ url: step.verified.url, ...step.verified.evidence }] : [],
+      step.verified?.evidence
+        ? [{ url: step.verified.url, ...step.verified.evidence }]
+        : [],
     ),
   ];
   const instructions = `Perform a completion review against the ORIGINAL user goal, not just the generated checklist.
@@ -441,10 +473,16 @@ The top-level output MUST be completion_review with complete, answer, evidence, 
               type: "object",
               additionalProperties: false,
               required: ["url", "quote"],
-              properties: { url: { type: "string" }, quote: { type: "string" } },
+              properties: {
+                url: { type: "string" },
+                quote: { type: "string" },
+              },
             },
           },
-          missing_steps: { ...PLAN_FORMAT.json_schema.schema.properties.steps, minItems: 0 },
+          missing_steps: {
+            ...PLAN_FORMAT.json_schema.schema.properties.steps,
+            minItems: 0,
+          },
         },
       },
     },
@@ -461,7 +499,10 @@ The top-level output MUST be completion_review with complete, answer, evidence, 
         response_format: format,
         messages: [
           { role: "system", content: instructions },
-          { role: "user", content: JSON.stringify({ goal, checkpoints, sources }) },
+          {
+            role: "user",
+            content: JSON.stringify({ goal, checkpoints, sources }),
+          },
           ...(attempt
             ? [
                 {
@@ -478,7 +519,11 @@ The top-level output MUST be completion_review with complete, answer, evidence, 
     try {
       const choices = result.choices;
       const first = Array.isArray(choices) ? choices[0] : undefined;
-      if (!object(first) || !object(first.message) || typeof first.message.content !== "string")
+      if (
+        !object(first) ||
+        !object(first.message) ||
+        typeof first.message.content !== "string"
+      )
         continue;
       const value: unknown = JSON.parse(first.message.content);
       if (
@@ -510,7 +555,9 @@ The top-level output MUST be completion_review with complete, answer, evidence, 
         continue;
       if (
         value.complete &&
-        (value.answer === null || !value.evidence.length || value.missing_steps.length)
+        (value.answer === null ||
+          !value.evidence.length ||
+          value.missing_steps.length)
       )
         continue;
       if (!value.complete && value.answer !== null) continue;

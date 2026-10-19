@@ -9,13 +9,26 @@ afterEach(async () => {
 });
 
 async function task(
-  mode: "ordered" | "omitted" | "unseen" | "wrong-waypoint" | "invented-evidence",
+  mode:
+    "ordered" | "omitted" | "unseen" | "wrong-waypoint" | "invented-evidence",
 ) {
   const visits: string[] = [];
   const pages: Record<string, [string, string, string]> = {
-    "/": ["Guide", "Choose a topic.", '<a href="/html">HTML</a><a href="/js">JavaScript</a>'],
-    "/html": ["HTML", "HTML defines structure.", '<a href="/css">Learn CSS</a>'],
-    "/css": ["CSS", "CSS defines presentation.", '<a href="/js">JavaScript</a>'],
+    "/": [
+      "Guide",
+      "Choose a topic.",
+      '<a href="/html">HTML</a><a href="/js">JavaScript</a>',
+    ],
+    "/html": [
+      "HTML",
+      "HTML defines structure.",
+      '<a href="/css">Learn CSS</a>',
+    ],
+    "/css": [
+      "CSS",
+      "CSS defines presentation.",
+      '<a href="/js">JavaScript</a>',
+    ],
     "/js": ["JavaScript", "JavaScript adds behavior.", '<a href="/">Home</a>'],
   };
   const site = Bun.serve({
@@ -61,7 +74,8 @@ async function task(
             missing_steps: [step("Learn CSS", "/css")],
           });
         }
-        const wanted = mode === "omitted" ? ["/html", "/css"] : ["/html", "/css", "/js"];
+        const wanted =
+          mode === "omitted" ? ["/html", "/css"] : ["/html", "/css", "/js"];
         const evidence = wanted.map((path) => ({
           url: `http://127.0.0.1:${site.port}${path}`,
           quote:
@@ -78,7 +92,8 @@ async function task(
       }
       planning++;
       if (payload.progress) {
-        if (mode === "unseen") expect(payload.progress.completed[0].verified).not.toBeNull();
+        if (mode === "unseen")
+          expect(payload.progress.completed[0].verified).not.toBeNull();
         else expect(payload.progress.completed).toEqual([]);
         return chatResponse({
           steps:
@@ -101,7 +116,9 @@ async function task(
     decisions++;
     const req = body as DecisionRequest;
     const elements = (req.state as { elements: ElementView[] }).elements;
-    const instruction = String(req.questions.operation!.instructions).split("\n")[0]!;
+    const instruction = String(req.questions.operation!.instructions).split(
+      "\n",
+    )[0]!;
     let label = instruction.includes("Open HTML")
       ? "HTML"
       : instruction.includes("Open CSS")
@@ -109,8 +126,11 @@ async function task(
         : "JavaScript";
     if (mode === "wrong-waypoint" && decisions === 1) label = "JavaScript";
     const target = elements.find((element) => element.label === label);
-    const blocked = !target || (mode === "unseen" && planning === 1 && label === "Learn CSS");
-    return Response.json(decisionResponse(req, blocked ? "BLOCKED" : "CLICK", target?.index));
+    const blocked =
+      !target || (mode === "unseen" && planning === 1 && label === "Learn CSS");
+    return Response.json(
+      decisionResponse(req, blocked ? "BLOCKED" : "CLICK", target?.index),
+    );
   });
   cleanup.push(() => models.server.stop(true));
   const goal =
@@ -142,7 +162,9 @@ test("multi-page task preserves waypoint order and returns a sourced answer", as
     "HTML defines structure. CSS defines presentation. JavaScript adds behavior.",
   );
   expect(result.agent.state.completion_reviews[0]!.evidence).toHaveLength(3);
-  expect(result.agent.state.checkpoints.every((step) => step.verified)).toBe(true);
+  expect(result.agent.state.checkpoints.every((step) => step.verified)).toBe(
+    true,
+  );
 });
 
 test("an omitted goal requirement is completed before DONE", async () => {
@@ -160,7 +182,9 @@ test("unseen destination controls replan only remaining work and retain prior ev
   expect(result.failure).toBeUndefined();
   expect(result.planning).toBe(2);
   expect(result.visits).toEqual(["/", "/html", "/css", "/js"]);
-  expect(result.agent.state.plan_revisions[0]!.checkpoints[0]!.verified?.url).toEndWith("/html");
+  expect(
+    result.agent.state.plan_revisions[0]!.checkpoints[0]!.verified?.url,
+  ).toEndWith("/html");
   expect(result.agent.state.status).toBe("done");
 });
 

@@ -1,7 +1,13 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import { Agent } from "../src/agent.js";
 import { StalePage, fingerprint } from "../src/browser.js";
-import { chatResponse, completionResponse, decisionResponse, page, provider } from "./helpers.js";
+import {
+  chatResponse,
+  completionResponse,
+  decisionResponse,
+  page,
+  provider,
+} from "./helpers.js";
 import type { DecisionRequest, TaskStep } from "../src/types.js";
 
 const servers: Bun.Server<undefined>[] = [];
@@ -14,7 +20,10 @@ function runner(
   target = "1",
   maxSteps = 60,
   steps: TaskStep[] = [
-    { instruction: "Find hotels in Lisbon", checks: [{ kind: "title", includes: "Completed" }] },
+    {
+      instruction: "Find hotels in Lisbon",
+      checks: [{ kind: "title", includes: "Completed" }],
+    },
   ],
 ) {
   let textCalls = 0;
@@ -23,12 +32,17 @@ function runner(
       const body = await request.json();
       if (body.response_format?.json_schema?.name === "completion_review")
         return completionResponse(body);
-      if (body.messages[0].content.includes("completion checklist")) return chatResponse({ steps });
+      if (body.messages[0].content.includes("completion checklist"))
+        return chatResponse({ steps });
       textCalls++;
       return chatResponse({ text: "Lisbon" });
     }
     return Response.json(
-      decisionResponse((await request.json()) as DecisionRequest, operation, target),
+      decisionResponse(
+        (await request.json()) as DecisionRequest,
+        operation,
+        target,
+      ),
     );
   });
   servers.push(transport.server);
@@ -43,7 +57,12 @@ function runner(
     settings: async () => transport.settings,
     maxSteps,
   });
-  return { agent, driver, settings: transport.settings, textCalls: () => textCalls };
+  return {
+    agent,
+    driver,
+    settings: transport.settings,
+    textCalls: () => textCalls,
+  };
 }
 
 test("consumes a stale decision before any mutation or text request", async () => {
@@ -92,7 +111,8 @@ test.each(["identical", "page", "provider", "node", "document", "url"])(
     expect(agent.state.history).toHaveLength(0);
     if (change === "page") agent.state.page.text = "A different field context";
     if (change === "provider") settings.text.apiKey = "changed-local-key";
-    if (change === "node") Object.assign(agent.state.page.actions[0]!, { node: 90 });
+    if (change === "node")
+      Object.assign(agent.state.page.actions[0]!, { node: 90 });
     if (change === "document") agent.state.page.document_id = "new-document";
     if (change === "url") agent.state.page.url = "https://example.test/other";
     await agent.command("tick");
@@ -117,7 +137,9 @@ test("post-action stale observation keeps history and never replays the consumed
 
 test("an uncertain browser mutation fails closed without automatic retry", async () => {
   const { agent, driver } = runner("CLICK", "2");
-  driver.act.mockRejectedValueOnce(new Error("Connection lost after mouse press"));
+  driver.act.mockRejectedValueOnce(
+    new Error("Connection lost after mouse press"),
+  );
   await expect(agent.command("tick")).rejects.toThrow("Connection lost");
   expect(agent.state.status).toBe("error");
   await expect(agent.command("tick")).rejects.toThrow("stopped");
@@ -145,7 +167,9 @@ test("WAIT does not trigger no-progress protection but is bounded by the action 
 test("repeated predictions and unchanged mutations are independently bounded", async () => {
   const predicting = runner("CLICK", "2", 2).agent;
   for (let i = 0; i < 4; i++) await predicting.command("predict");
-  await expect(predicting.command("predict")).rejects.toThrow("model-call budget");
+  await expect(predicting.command("predict")).rejects.toThrow(
+    "model-call budget",
+  );
   const clicking = runner("CLICK", "2").agent;
   for (let i = 0; i < 3; i++) await clicking.command("tick");
   expect(clicking.state.status).toBe("blocked");
@@ -171,7 +195,10 @@ test("failed checklist attempts remain visible in the trace without executing a 
 
 test("completion requires a fresh observation, not just matching stale checkpoint values", async () => {
   const { agent, driver } = runner("WAIT", "", 60, [
-    { instruction: "Read the Search title", checks: [{ kind: "title", includes: "Search" }] },
+    {
+      instruction: "Read the Search title",
+      checks: [{ kind: "title", includes: "Search" }],
+    },
   ]);
   driver.fresh.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
   await expect(agent.command("predict")).rejects.toBeInstanceOf(StalePage);
@@ -186,9 +213,15 @@ test("completion requires a fresh observation, not just matching stale checkpoin
 
 test("a page change during final review never publishes a completed answer", async () => {
   const { agent, driver } = runner("WAIT", "", 60, [
-    { instruction: "Read Search", checks: [{ kind: "title", includes: "Search" }] },
+    {
+      instruction: "Read Search",
+      checks: [{ kind: "title", includes: "Search" }],
+    },
   ]);
-  driver.fresh.mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  driver.fresh
+    .mockResolvedValueOnce(true)
+    .mockResolvedValueOnce(true)
+    .mockResolvedValueOnce(false);
   await expect(agent.command("predict")).rejects.toBeInstanceOf(StalePage);
   expect(agent.state.answer).toBeNull();
   expect(agent.state.status).toBe("ready");
@@ -196,7 +229,12 @@ test("a page change during final review never publishes a completed answer", asy
 });
 
 test("repeated missing requirements stop within the review and revision budgets", async () => {
-  const steps = [{ instruction: "Read Search", checks: [{ kind: "title", includes: "Search" }] }];
+  const steps = [
+    {
+      instruction: "Read Search",
+      checks: [{ kind: "title", includes: "Search" }],
+    },
+  ];
   const p = provider(async (request) => {
     const body = await request.json();
     return chatResponse(
@@ -207,7 +245,9 @@ test("repeated missing requirements stop within the review and revision budgets"
   });
   servers.push(p.server);
   const { driver } = runner();
-  const agent = new Agent(driver, page(), "Read Search", { settings: async () => p.settings });
+  const agent = new Agent(driver, page(), "Read Search", {
+    settings: async () => p.settings,
+  });
   await agent.command("tick");
   expect(agent.state.status).toBe("blocked");
   expect(agent.state.completion_reviews).toHaveLength(3);
@@ -257,7 +297,9 @@ test("a missing required field value blocks clearly without typing or retrying",
   expect(agent.state.status).toBe("blocked");
   expect(agent.state.stop_reason?.code).toBe("missing_value");
   expect(agent.state.text_calls).toHaveLength(1);
-  expect(agent.state.model_calls.filter((c) => c.role === "text")).toHaveLength(1);
+  expect(agent.state.model_calls.filter((c) => c.role === "text")).toHaveLength(
+    1,
+  );
   expect(driver.act).not.toHaveBeenCalled();
   expect(agent.state.history).toHaveLength(0);
 });
@@ -293,7 +335,11 @@ test("recovered post-action observations participate in the three-repeat guard",
     return structuredClone(agent.state.page);
   });
   for (let i = 0; i < 3; i++) await agent.command("tick");
-  expect(agent.state.history.map((entry) => entry.page_changed)).toEqual([false, false, false]);
+  expect(agent.state.history.map((entry) => entry.page_changed)).toEqual([
+    false,
+    false,
+    false,
+  ]);
   expect(agent.state.status).toBe("blocked");
   expect(agent.state.stop_reason?.code).toBe("no_progress");
   expect(driver.act).toHaveBeenCalledTimes(3);
@@ -318,7 +364,9 @@ test("BLOCKED reobserves before stopping and reports incomplete coverage", async
   await agent.command("tick");
   expect(agent.state.status).toBe("ready");
   agent.state.page.omitted_actions = 12;
-  driver.observe.mockImplementation(async () => structuredClone(agent.state.page));
+  driver.observe.mockImplementation(async () =>
+    structuredClone(agent.state.page),
+  );
   await agent.command("tick");
   expect(agent.state.status).toBe("blocked");
   expect(agent.state.stop_reason?.code).toBe("incomplete_observation");

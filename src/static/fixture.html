@@ -346,7 +346,8 @@
     <header>
       <a href="#" class="logo" id="home">forma.</a>
       <nav>
-        <a href="#" id="stays">Find a stay</a><a href="#reading" id="reading">Reading room</a>
+        <a href="#" id="stays">Find a stay</a
+        ><a href="#reading" id="reading">Reading room</a>
       </nav>
       <span class="edition">PLACES WITH CHARACTER</span>
     </header>
@@ -364,7 +365,8 @@
           category: "Design",
           free: true,
           price: 145,
-          description: "A quiet courtyard, warm terracotta, and light that stays all afternoon.",
+          description:
+            "A quiet courtyard, warm terracotta, and light that stays all afternoon.",
         },
         {
           name: "The Glasshouse",
@@ -411,7 +413,8 @@
       function results() {
         const rows = places.filter(
           (p) =>
-            (!searched || p.city.toLowerCase().includes(query.trim().toLowerCase())) &&
+            (!searched ||
+              p.city.toLowerCase().includes(query.trim().toLowerCase())) &&
             (category === "all" || p.category === category) &&
             (!free || p.free),
         );
@@ -429,7 +432,9 @@
         target
           .querySelectorAll("button")
           .forEach(
-            (b) => (b.onclick = () => detail(places.find((p) => p.name === b.dataset.place))),
+            (b) =>
+              (b.onclick = () =>
+                detail(places.find((p) => p.name === b.dataset.place))),
           );
       }
       function detail(p) {
@@ -453,13 +458,15 @@
           id: "latency",
           tag: "SYSTEMS · 4 MIN",
           title: "Where the milliseconds go",
-          description: "Measuring network latency, model decisions, and page settling separately.",
+          description:
+            "Measuring network latency, model decisions, and page settling separately.",
         },
         {
           id: "uncertainty",
           tag: "RESEARCH · 5 MIN",
           title: "Confidence is not correctness",
-          description: "What a peaked distribution can and cannot tell you about an outcome.",
+          description:
+            "What a peaked distribution can and cannot tell you about an outcome.",
         },
       ];
       function research() {
@@ -492,7 +499,9 @@
         travel();
       };
       document.getElementById("reading").onclick = research;
-      new URLSearchParams(location.search).get("scenario") === "research" ? research() : travel();
+      new URLSearchParams(location.search).get("scenario") === "research"
+        ? research()
+        : travel();
     </script>
   </body>
 </html>

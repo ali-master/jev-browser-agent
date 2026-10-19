@@ -1,6 +1,10 @@
 (() => {
   if (!document.body) return null;
-  const cache = (window.__jevFast ||= { ids: new WeakMap(), nodes: new Map(), next: 1 });
+  const cache = (window.__jevFast ||= {
+    ids: new WeakMap(),
+    nodes: new Map(),
+    next: 1,
+  });
   const identity = (e) => {
     if (!cache.ids.has(e)) cache.ids.set(e, cache.next++);
     const id = cache.ids.get(e);
@@ -82,7 +86,8 @@
         ':scope > legend,:scope > caption,:scope > [role="rowheader"],:scope > th,:scope > h1,:scope > h2,:scope > h3',
       );
       const label =
-        container.hasAttribute("aria-label") || container.hasAttribute("aria-labelledby")
+        container.hasAttribute("aria-label") ||
+        container.hasAttribute("aria-labelledby")
           ? name(container)
           : name(heading) || container.getAttribute("name") || container.id;
       if (label) labels.unshift(label.trim().slice(0, 120));
@@ -90,7 +95,9 @@
     return { scope: labels.join(" / "), context };
   };
   const control = (e) =>
-    e.tagName === "LABEL" && ["checkbox", "radio"].includes(e.control?.type) ? e.control : e;
+    e.tagName === "LABEL" && ["checkbox", "radio"].includes(e.control?.type)
+      ? e.control
+      : e;
   const customClickable = (e) =>
     e.hasAttribute("onclick") ||
     typeof e.onclick === "function" ||
@@ -106,11 +113,16 @@
     if (e.tagName === "TEXTAREA" || e.isContentEditable) return "textbox";
     if (e.tagName === "INPUT") {
       if (["checkbox", "radio"].includes(e.type)) return e.type;
-      if (["button", "submit", "reset", "image"].includes(e.type)) return "button";
+      if (["button", "submit", "reset", "image"].includes(e.type))
+        return "button";
       if (e.type === "search") return "searchbox";
       if (e.type === "number") return "spinbutton";
       if (e.type === "range") return "slider";
-      if (["date", "time", "datetime-local", "month", "week", "color"].includes(e.type))
+      if (
+        ["date", "time", "datetime-local", "month", "week", "color"].includes(
+          e.type,
+        )
+      )
         return "textbox";
       if (["text", "email", "url", "tel"].includes(e.type)) return "textbox";
     }
@@ -125,7 +137,14 @@
     innerHeight,
     [...document.querySelectorAll("input,textarea,select")]
       .filter(safe)
-      .map((e) => [identity(e), e.value, e.checked, e.selectedIndex, e.disabled, e.readOnly]),
+      .map((e) => [
+        identity(e),
+        e.value,
+        e.checked,
+        e.selectedIndex,
+        e.disabled,
+        e.readOnly,
+      ]),
   ];
   cache.guard = (e) => {
     if (!e?.isConnected || !visible(e)) return null;
@@ -168,7 +187,10 @@
   };
   const actions = [];
   const candidates = new Set(document.querySelectorAll(selector));
-  const candidatesWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+  const candidatesWalker = document.createTreeWalker(
+    document.body,
+    NodeFilter.SHOW_ELEMENT,
+  );
   let candidate,
     inspected = 0;
   while (inspected < 5000 && (candidate = candidatesWalker.nextNode())) {
@@ -181,7 +203,8 @@
     )
       candidates.add(candidate);
   }
-  const discovery_limited = inspected === 5000 && candidatesWalker.nextNode() !== null;
+  const discovery_limited =
+    inspected === 5000 && candidatesWalker.nextNode() !== null;
   for (const e of candidates) {
     const c = control(e);
     if (
@@ -211,7 +234,8 @@
       y >= innerHeight
     )
       continue;
-    if (rname === "gridcell" && e.querySelector('button,[role="button"]')) continue;
+    if (rname === "gridcell" && e.querySelector('button,[role="button"]'))
+      continue;
     const base = {
       node: identity(e),
       ref: `${document_id}:${identity(c)}`,
@@ -230,7 +254,8 @@
       const value = e.getAttribute("aria-" + key);
       if (value !== null) base[key] = value;
     }
-    if (["checkbox", "radio"].includes(c.type)) base.checked = String(c.checked);
+    if (["checkbox", "radio"].includes(c.type))
+      base.checked = String(c.checked);
     if (e.tagName === "SELECT") {
       for (const o of e.options)
         if (!o.selected && !o.disabled && !o.closest("optgroup[disabled]"))
@@ -240,7 +265,9 @@
             value: o.value,
             option_index: o.index,
             option_node: identity(o),
-            current_value: [...e.selectedOptions].map((o) => o.label).join(", "),
+            current_value: [...e.selectedOptions]
+              .map((o) => o.label)
+              .join(", "),
             label: base.label + " → " + o.label,
           });
     } else {
@@ -257,7 +284,13 @@
             ? e.innerText.trim()
             : "";
       actions.push({ ...base, kind: editable ? "fill" : "click", value });
-      if (editable) actions.push({ ...base, kind: "click", value, label: "Open " + base.label });
+      if (editable)
+        actions.push({
+          ...base,
+          kind: "click",
+          value,
+          label: "Open " + base.label,
+        });
     }
   }
   const words = [],
@@ -268,7 +301,12 @@
   while ((node = walker.nextNode()) && length < 6000) {
     const value = node.textContent.trim(),
       parent = node.parentElement;
-    if (!value || !parent || parent.closest("script,style,noscript,template") || !visible(parent))
+    if (
+      !value ||
+      !parent ||
+      parent.closest("script,style,noscript,template") ||
+      !visible(parent)
+    )
       continue;
     range.selectNodeContents(node);
     const r = range.getBoundingClientRect();
@@ -289,10 +327,13 @@
   const page_key = cache.pageKey(),
     guards = {};
   for (const a of actions)
-    if (!(a.node in guards)) guards[a.node] = cache.guard(cache.nodes.get(a.node));
+    if (!(a.node in guards))
+      guards[a.node] = cache.guard(cache.nodes.get(a.node));
   // Compare meaning and identity. Geometry is always resolved and hit-tested just before input.
   const semantics = actions.map(({ rect, ...action }) => action);
-  const readiness = [...document.querySelectorAll('[aria-busy="true"]')].some(visible)
+  const readiness = [...document.querySelectorAll('[aria-busy="true"]')].some(
+    visible,
+  )
     ? "loading"
     : actions.length
       ? "ready"
@@ -316,10 +357,24 @@
   actions.splice(250);
   actions.forEach((a, i) => (a.id = "e" + (i + 1)));
   if (scrollY + innerHeight < height - 2)
-    actions.push({ id: "scroll_down", kind: "scroll", label: "Scroll down", delta: 560 });
+    actions.push({
+      id: "scroll_down",
+      kind: "scroll",
+      label: "Scroll down",
+      delta: 560,
+    });
   if (scrollY > 0)
-    actions.push({ id: "scroll_up", kind: "scroll", label: "Scroll up", delta: -560 });
-  actions.push({ id: "wait", kind: "wait", label: "Wait for the page to update" });
+    actions.push({
+      id: "scroll_up",
+      kind: "scroll",
+      label: "Scroll up",
+      delta: -560,
+    });
+  actions.push({
+    id: "wait",
+    kind: "wait",
+    label: "Wait for the page to update",
+  });
   return {
     document_id,
     discovery_limited,

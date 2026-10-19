@@ -1,4 +1,12 @@
-import { afterAll, afterEach, beforeAll, beforeEach, expect, spyOn, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  spyOn,
+  test,
+} from "bun:test";
 import type { CDPSession } from "playwright";
 import { Browser, StalePage, fingerprint } from "../src/browser.js";
 import { fixture, page } from "./helpers.js";
@@ -10,7 +18,8 @@ beforeAll(() => {
   server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch: () => new Response(fixture, { headers: { "Content-Type": "text/html" } }),
+    fetch: () =>
+      new Response(fixture, { headers: { "Content-Type": "text/html" } }),
   });
 });
 afterAll(async () => {
@@ -33,10 +42,17 @@ test("streams actual browser paints and navigation, then detaches without input"
   };
   await waitForFrame(() => frames.length > 0);
   const first = frames[0]!;
-  expect([...Buffer.from(first.image, "base64").subarray(0, 2)]).toEqual([255, 216]);
-  await browser.evaluate("location.hash='stream-probe';document.body.style.background='red';true");
+  expect([...Buffer.from(first.image, "base64").subarray(0, 2)]).toEqual([
+    255, 216,
+  ]);
+  await browser.evaluate(
+    "location.hash='stream-probe';document.body.style.background='red';true",
+  );
   await waitForFrame(() =>
-    frames.some((frame) => frame.url.endsWith("#stream-probe") && frame.image !== first.image),
+    frames.some(
+      (frame) =>
+        frame.url.endsWith("#stream-probe") && frame.image !== first.image,
+    ),
   );
   await stop();
   const count = frames.length;
@@ -50,12 +66,16 @@ test("observes native controls, types text, selects an observed option and submi
   let state = await browser.observe(true);
   expect(state.screenshot?.length).toBeGreaterThan(100);
   expect(
-    state.actions.filter((action) => action.kind === "select").map((action) => action.value),
+    state.actions
+      .filter((action) => action.kind === "select")
+      .map((action) => action.value),
   ).toEqual(["Design"]);
   const city = state.actions.find((action) => action.kind === "fill")!;
   await browser.act(city, state, "Lisbon");
   state = await browser.observe();
-  expect(await browser.evaluate("document.querySelector('#city').value")).toBe("Lisbon");
+  expect(await browser.evaluate("document.querySelector('#city').value")).toBe(
+    "Lisbon",
+  );
   await browser.act(
     state.actions.find((action) => action.kind === "select")!,
     state,
@@ -66,16 +86,20 @@ test("observes native controls, types text, selects an observed option and submi
     state,
   );
   await browser.observe();
-  expect(await browser.evaluate("document.querySelector('#result').textContent")).toBe(
-    "Results: Lisbon / Design",
-  );
+  expect(
+    await browser.evaluate("document.querySelector('#result').textContent"),
+  ).toBe("Results: Lisbon / Design");
   expect(await browser.evaluate("window.submits")).toBe(1);
 });
 
 test("moving controls use current geometry without requiring another prediction", async () => {
   const state = await browser.observe();
-  const action = state.actions.find((action) => action.label === "Search hotels")!;
-  await browser.evaluate("document.querySelector('#search').style.transform='translateX(120px)'");
+  const action = state.actions.find(
+    (action) => action.label === "Search hotels",
+  )!;
+  await browser.evaluate(
+    "document.querySelector('#search').style.transform='translateX(120px)'",
+  );
   expect(await browser.fresh(state, action)).toBe(true);
   await browser.act(action, state);
   expect(await browser.evaluate("window.submits")).toBe(1);
@@ -93,10 +117,15 @@ test.each([
     "replaced node",
     "document.querySelector('#search').outerHTML=document.querySelector('#search').outerHTML",
   ],
-  ["dropdown choice", "document.querySelector('#category').options[1].text='Coastal'"],
+  [
+    "dropdown choice",
+    "document.querySelector('#category').options[1].text='Coastal'",
+  ],
 ])("rejects stale %s before input", async (_name, mutation) => {
   const state = await browser.observe();
-  const action = state.actions.find((action) => action.label === "Search hotels")!;
+  const action = state.actions.find(
+    (action) => action.label === "Search hotels",
+  )!;
   await browser.evaluate(mutation!);
   expect(await browser.fresh(state, action)).toBe(false);
   await expect(browser.act(action, state)).rejects.toBeInstanceOf(StalePage);
@@ -105,7 +134,9 @@ test.each([
 
 test("textless overlay blocks clicks even when semantic state is unchanged", async () => {
   const state = await browser.observe();
-  const action = state.actions.find((action) => action.label === "Search hotels")!;
+  const action = state.actions.find(
+    (action) => action.label === "Search hotels",
+  )!;
   await browser.evaluate(
     "const cover=document.createElement('div');cover.style.cssText='position:fixed;inset:0;z-index:9999;background:white';document.body.append(cover);true",
   );
@@ -122,7 +153,9 @@ test("passwords, hidden fields, disabled controls and offscreen text are exclude
   expect(JSON.stringify(state)).not.toContain("never-expose");
   expect(JSON.stringify(state)).not.toContain("hidden-secret");
   expect(state.text).not.toContain("Offscreen secret");
-  expect(state.actions.some((action) => action.label === "Disabled control")).toBe(false);
+  expect(
+    state.actions.some((action) => action.label === "Disabled control"),
+  ).toBe(false);
 });
 
 test("fill waits for async autocomplete suggestions and navigation invalidates old observations", async () => {
@@ -137,7 +170,11 @@ test("fill waits for async autocomplete suggestions and navigation invalidates o
     "Lisbon",
   );
   const after = await browser.observe();
-  expect(after.actions.some((action) => "role" in action && action.role === "option")).toBe(true);
+  expect(
+    after.actions.some(
+      (action) => "role" in action && action.role === "option",
+    ),
+  ).toBe(true);
   await browser.evaluate("location.href='about:blank';true");
   await Bun.sleep(80);
   expect(await browser.fresh(after)).toBe(false);
@@ -146,27 +183,30 @@ test("fill waits for async autocomplete suggestions and navigation invalidates o
 test("forged actions and invalid text never reach browser input", async () => {
   const state = await browser.observe();
   const action = state.actions.find((item) => item.kind === "fill")!;
-  await expect(browser.act({ ...action, id: "invented" }, state, "hello")).rejects.toThrow(
-    "observed page",
-  );
+  await expect(
+    browser.act({ ...action, id: "invented" }, state, "hello"),
+  ).rejects.toThrow("observed page");
   await expect(browser.act(action, state, "")).rejects.toThrow("nothing typed");
-  expect(await browser.evaluate("document.querySelector('#city').value")).toBe("");
+  expect(await browser.evaluate("document.querySelector('#city').value")).toBe(
+    "",
+  );
 });
 
 test("fingerprints ignore screenshots and geometry, but include node identity and field values", () => {
   const state = page();
   const other = structuredClone(state);
   other.screenshot = "new frame";
-  if ("node" in other.actions[0]!) other.actions[0].rect = { x: 90, y: 20, w: 200, h: 30 };
+  if ("node" in other.actions[0]!)
+    other.actions[0].rect = { x: 90, y: 20, w: 200, h: 30 };
   expect(fingerprint(other)).toBe(fingerprint(state));
   if ("node" in other.actions[0]!) other.actions[0].value = "new value";
   expect(fingerprint(other)).not.toBe(fingerprint(state));
 });
 
 test("an interrupted mutating evaluation is never classified as a safe stale retry", async () => {
-  await expect(browser.evaluate("throw new Error('interrupted')", true)).rejects.not.toBeInstanceOf(
-    StalePage,
-  );
+  await expect(
+    browser.evaluate("throw new Error('interrupted')", true),
+  ).rejects.not.toBeInstanceOf(StalePage);
 });
 
 test.each([
@@ -196,7 +236,9 @@ test.each([
       (a) => a.kind === "select" && a.label.endsWith(String(label)),
     )!;
     await browser.act(action, state);
-    expect(await browser.evaluate("document.querySelector('select').selectedIndex")).toBe(index);
+    expect(
+      await browser.evaluate("document.querySelector('select').selectedIndex"),
+    ).toBe(index);
     expect(await browser.evaluate("window.changes")).toBe(1);
   },
 );
@@ -222,7 +264,9 @@ test("same-labeled fields expose distinct document identities and bounded form c
   const state = await browser.observe();
   const fields = state.actions.filter((a) => a.kind === "fill");
   expect(fields).toHaveLength(2);
-  const contexts = fields.map((a) => fieldContext("Sender Alice, recipient Bob", a, state, []));
+  const contexts = fields.map((a) =>
+    fieldContext("Sender Alice, recipient Bob", a, state, []),
+  );
   expect(contexts[0]!.field.ref).not.toBe(contexts[1]!.field.ref);
   expect(contexts.map((c) => c.field.scope)).toEqual(["Sender", "Recipient"]);
   expect(contexts[1]!.field.html_id).toBe("recipient");
@@ -252,7 +296,9 @@ test("clicks custom controls and visible labels of hidden radios without duplica
     state,
   );
   state = await browser.observe();
-  expect(await browser.evaluate("document.querySelector('input').checked")).toBe(true);
+  expect(
+    await browser.evaluate("document.querySelector('input').checked"),
+  ).toBe(true);
   expect(state.actions.find((a) => a.label === "Radio label")).toMatchObject({
     checked: "true",
     role: "radio",
@@ -271,7 +317,9 @@ test("hidden radio eligibility is guarded before clicking its label", async () =
       state,
     ),
   ).rejects.toBeInstanceOf(StalePage);
-  expect(await browser.evaluate("document.querySelector('input').checked")).toBe(false);
+  expect(
+    await browser.evaluate("document.querySelector('input').checked"),
+  ).toBe(false);
 });
 
 test("fills all editable attribute forms and excludes false and nested editor targets", async () => {
@@ -279,11 +327,9 @@ test("fills all editable attribute forms and excludes false and nested editor ta
     `document.body.innerHTML='<div contenteditable aria-label="Bare" style="height:30px"><span contenteditable="true">Nested</span></div><div contenteditable="" aria-label="Empty" style="height:30px"></div><div contenteditable="plaintext-only" aria-label="Plain" style="height:30px"></div><div contenteditable="false" aria-label="False">False</div>';true`,
   );
   let state = await browser.observe();
-  expect(state.actions.filter((a) => a.kind === "fill").map((a) => a.label)).toEqual([
-    "Bare",
-    "Empty",
-    "Plain",
-  ]);
+  expect(
+    state.actions.filter((a) => a.kind === "fill").map((a) => a.label),
+  ).toEqual(["Bare", "Empty", "Plain"]);
   for (const label of ["Bare", "Empty", "Plain"]) {
     await browser.act(
       state.actions.find((a) => a.kind === "fill" && a.label === label)!,
@@ -291,7 +337,9 @@ test("fills all editable attribute forms and excludes false and nested editor ta
       "Updated",
     );
     state = await browser.observe();
-    expect(state.actions.find((a) => a.kind === "fill" && a.label === label)).toMatchObject({
+    expect(
+      state.actions.find((a) => a.kind === "fill" && a.label === label),
+    ).toMatchObject({
       value: "Updated",
     });
   }
@@ -315,12 +363,18 @@ test.each([
     let action = state.actions.find((a) => a.kind === "fill")!;
     expect(action).toMatchObject({ input_type: type });
     await browser.act(action, state, value);
-    expect(await browser.evaluate("document.querySelector('input').value")).toBe(value);
+    expect(
+      await browser.evaluate("document.querySelector('input').value"),
+    ).toBe(value);
     expect(await browser.evaluate("window.events")).toBe(1);
     state = await browser.observe();
     action = state.actions.find((a) => a.kind === "fill")!;
-    await expect(browser.act(action, state, invalid)).rejects.toThrow("Invalid native input");
-    expect(await browser.evaluate("document.querySelector('input').value")).toBe(value);
+    await expect(browser.act(action, state, invalid)).rejects.toThrow(
+      "Invalid native input",
+    );
+    expect(
+      await browser.evaluate("document.querySelector('input').value"),
+    ).toBe(value);
     expect(await browser.evaluate("window.events")).toBe(1);
   },
 );
@@ -347,7 +401,9 @@ test("native constraints and readonly changes invalidate the selected input", as
     ),
   ).rejects.toThrow("constraint");
   await browser.evaluate("document.querySelector('input').readOnly=true");
-  expect((await browser.observe()).actions.some((a) => a.kind === "fill")).toBe(false);
+  expect((await browser.observe()).actions.some((a) => a.kind === "fill")).toBe(
+    false,
+  );
 });
 
 test("first observation waits for delayed controls instead of returning an empty action space", async () => {
@@ -374,12 +430,16 @@ test("settling gives delayed menus a bounded chance to appear", async () => {
 });
 
 test("permanently empty and busy pages return bounded readiness metadata", async () => {
-  await browser.evaluate(`document.body.innerHTML='<main aria-busy="true">Loading</main>';true`);
+  await browser.evaluate(
+    `document.body.innerHTML='<main aria-busy="true">Loading</main>';true`,
+  );
   const began = performance.now();
   const busy = await browser.observe();
   expect(busy.readiness).toBe("loading");
   expect(performance.now() - began).toBeLessThan(2500);
-  await browser.evaluate("document.querySelector('main').removeAttribute('aria-busy');true");
+  await browser.evaluate(
+    "document.querySelector('main').removeAttribute('aria-busy');true",
+  );
   expect((await browser.observe()).readiness).toBe("empty");
 });
 
@@ -389,15 +449,17 @@ test.each(["reject", "hang"])(
     const session = (browser as unknown as { session: CDPSession }).session;
     const original = session.send.bind(session);
     let captures = 0;
-    const send = spyOn(session, "send").mockImplementation((method: any, params: any) => {
-      if (method === "Page.captureScreenshot") {
-        captures++;
-        return mode === "reject"
-          ? Promise.reject(new Error("Screenshot failed"))
-          : new Promise(() => {});
-      }
-      return original(method, params);
-    });
+    const send = spyOn(session, "send").mockImplementation(
+      (method: any, params: any) => {
+        if (method === "Page.captureScreenshot") {
+          captures++;
+          return mode === "reject"
+            ? Promise.reject(new Error("Screenshot failed"))
+            : new Promise(() => {});
+        }
+        return original(method, params);
+      },
+    );
     try {
       const state = await browser.observe(true);
       expect(state.actions.some((a) => a.label === "Search hotels")).toBe(true);
@@ -410,7 +472,9 @@ test.each(["reject", "hang"])(
         state,
         "Lisbon",
       );
-      expect(await browser.evaluate("document.querySelector('#city').value")).toBe("Lisbon");
+      expect(
+        await browser.evaluate("document.querySelector('#city').value"),
+      ).toBe("Lisbon");
     } finally {
       send.mockRestore();
     }
