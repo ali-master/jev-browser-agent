@@ -77,6 +77,40 @@ test("consumes a stale decision before any mutation or text request", async () =
   expect(agent.state.decision).toBeNull();
 });
 
+test.each(["explicit", "substring", "unbound", "password", "ambiguous"])(
+  "reuse field text only for a uniquely bound explicit value: %s",
+  async (mode) => {
+    const check = {
+      kind: "value" as const,
+      label: "Search",
+      equals: mode === "substring" ? "Lis" : "Lisbon",
+    };
+    const { agent, driver, textCalls } = runner("TYPE_TEXT", "1", 60, [
+      {
+        instruction: "Enter city",
+        checks: mode === "ambiguous" ? [check, { ...check }] : [check],
+      },
+    ]);
+    if (mode !== "unbound")
+      Object.assign(agent.state.page.actions[0]!, {
+        ref: "fixture-document:10",
+      });
+    if (mode === "password")
+      Object.assign(agent.state.page.actions[0]!, { input_type: "password" });
+    await agent.command("tick");
+    expect(textCalls()).toBe(mode === "explicit" ? 0 : 1);
+    expect(driver.act).toHaveBeenCalledTimes(1);
+    expect(agent.state.history[0]!.text).toBe("Lisbon");
+    if (mode === "explicit") {
+      expect(agent.state.history[0]!.text_helper).toBeNull();
+      expect(agent.state.model_calls.map((call) => call.role)).toEqual([
+        "planning",
+        "decision",
+      ]);
+    }
+  },
+);
+
 test("only the active step binds a control identity from the current document", async () => {
   const steps: TaskStep[] = ["Lisbon", "Porto"].map((value) => ({
     instruction: `Enter ${value} in Search`,

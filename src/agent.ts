@@ -565,39 +565,61 @@ export class Agent {
     if (action.kind === "fill") {
       if (!(await this.browser.fresh(page)))
         throw new StalePage("Page changed before text generation.");
-      const context = fieldContext(
-        `${state.plan[state.plan_index]}\nOriginal goal: ${state.goal}`,
-        action,
-        page,
-        state.history,
+      const values = state.checkpoints[state.plan_index]?.checks.filter(
+        (check) =>
+          check.kind === "value" &&
+          action.ref &&
+          check.ref === action.ref &&
+          check.label === action.label &&
+          (check.scope ?? "") === (action.scope ?? ""),
       );
-      const config = (await this.settings()).text;
-      const key = JSON.stringify({ context, config });
-      if (this.pendingText?.key === key) ({ text, helper } = this.pendingText);
-      else {
-        this.activity("writing", action);
-        const result = await fieldText(
-          context,
-          async () => (await this.settings()).text,
-          this.modelObserver("text"),
+      const check = values?.length === 1 ? values[0] : undefined;
+      // Reuse only an explicit user value for the uniquely bound current field.
+      if (
+        check?.kind === "value" &&
+        action.input_type !== "password" &&
+        new RegExp(
+          `(?<![\\p{L}\\p{N}_])${RegExp.escape(check.equals)}(?![\\p{L}\\p{N}_])`,
+          "u",
+        ).test(state.goal)
+      ) {
+        text = check.equals;
+      } else {
+        const context = fieldContext(
+          `${state.plan[state.plan_index]}\nOriginal goal: ${state.goal}`,
+          action,
+          page,
+          state.history,
         );
-        helper = result.helper;
-        state.text_calls.push({
-          ...helper,
-          field: action.label,
-          value: result.text,
-        });
-        if (result.text === null) {
-          state.status = "blocked";
-          state.stop_reason = {
-            code: "missing_value",
-            message: `A required value for “${action.label}” is missing. Add it to the task and start again; nothing was typed.`,
-          };
-          this.pendingText = null;
-          return;
+        const config = (await this.settings()).text;
+        const key = JSON.stringify({ context, config });
+        if (this.pendingText?.key === key)
+          ({ text, helper } = this.pendingText);
+        else {
+          this.activity("writing", action);
+          const result = await fieldText(
+            context,
+            async () => (await this.settings()).text,
+            this.modelObserver("text"),
+          );
+          helper = result.helper;
+          state.text_calls.push({
+            ...helper,
+            field: action.label,
+            value: result.text,
+          });
+          if (result.text === null) {
+            state.status = "blocked";
+            state.stop_reason = {
+              code: "missing_value",
+              message: `A required value for “${action.label}” is missing. Add it to the task and start again; nothing was typed.`,
+            };
+            this.pendingText = null;
+            return;
+          }
+          text = result.text;
+          this.pendingText = { key, text, helper };
         }
-        text = result.text;
-        this.pendingText = { key, text, helper };
       }
     }
     this.activity("acting", action, text);

@@ -13,6 +13,82 @@ afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop(true);
 });
 
+test("rejects a borrowed scope even when ref is null on a later checklist step", () => {
+  const state = page();
+  const control = {
+    kind: "value",
+    label: "Search",
+    equals: "Lisbon",
+    ref: null,
+    scope: "unrelated form" as string | null,
+  };
+  const plan = {
+    steps: [
+      {
+        instruction: "Read Search",
+        checks: [{ kind: "title", includes: "Search" }],
+      },
+      { instruction: "Type Lisbon", checks: [control] },
+    ],
+  };
+  expect(() => validatePlan(plan, "Type Lisbon", state)).toThrow(
+    "unobserved scope",
+  );
+  control.scope = null;
+  expect(validatePlan(plan, "Type Lisbon", state)).toHaveLength(2);
+});
+
+test("completion review deduplicates source text without dropping distinct evidence or checkpoint order", async () => {
+  const state = page();
+  const steps: Checkpoint[] = ["First", "Second", "Third"].map(
+    (instruction, index) => ({
+      instruction,
+      checks: [{ kind: "title", includes: "Search" }],
+      started_at_action: index,
+      started_fingerprint: `start-${index}`,
+      verified: {
+        fingerprint: `end-${index}`,
+        url: state.url,
+        action_count: index + 1,
+        evidence: {
+          title: state.title,
+          text: index === 2 ? "Distinct earlier evidence" : state.text,
+        },
+      },
+    }),
+  );
+  const before = structuredClone(steps);
+  const p = provider(async (request) => {
+    const body = await request.json();
+    const context = JSON.parse(body.messages[1].content);
+    expect(context.sources).toHaveLength(2);
+    expect(context.sources[1].text).toBe("Distinct earlier evidence");
+    expect(
+      context.checkpoints.map((step: any) => step.verified.action_count),
+    ).toEqual([1, 2, 3]);
+    expect(context.checkpoints[0].checks).toEqual(steps[0]!.checks);
+    expect(JSON.stringify(context.checkpoints)).not.toContain("evidence");
+    return chatResponse({
+      complete: true,
+      answer: "Done",
+      evidence: [{ url: state.url, quote: "Distinct earlier evidence" }],
+      missing_steps: [],
+    });
+  });
+  servers.push(p.server);
+  expect(
+    (
+      await reviewCompletion(
+        state,
+        "Read all three pages",
+        steps,
+        async () => p.endpoint,
+      )
+    ).complete,
+  ).toBe(true);
+  expect(steps).toEqual(before);
+});
+
 test("nullable checklist and review schemas work with string-only type parsers", async () => {
   const acceptsTypes = (schema: unknown): boolean =>
     !schema ||

@@ -176,14 +176,14 @@ test("real Chromium + HTTP model transport completes a local task with independe
   ]);
   expect(models.counts).toEqual({
     decisions: 3,
-    text: 1,
+    text: 0,
     planning: 1,
     verification: 1,
   });
-  expect(agent.snapshot().usage.total.requests).toBe(6);
-  expect(agent.snapshot().usage.total.unknown_usage_requests).toBe(6);
-  expect(agent.snapshot().usage.total.unknown_cost_requests).toBe(6);
-  expect(agent.snapshot().usage.by_model).toHaveLength(4);
+  expect(agent.snapshot().usage.total.requests).toBe(5);
+  expect(agent.snapshot().usage.total.unknown_usage_requests).toBe(5);
+  expect(agent.snapshot().usage.total.unknown_cost_requests).toBe(5);
+  expect(agent.snapshot().usage.by_model).toHaveLength(3);
   expect(agent.state.checkpoints.every((step) => step.verified)).toBe(true);
   expect(
     agent.state.decisions.every(
@@ -295,7 +295,7 @@ test("inspector saves private settings and drives a complete task through its co
   );
   expect(models.counts).toEqual({
     decisions: 3,
-    text: 1,
+    text: 0,
     planning: 1,
     verification: 1,
   });
@@ -412,7 +412,7 @@ test("live inspector shows a pending model call and pauses before executing its 
     );
     expect(models.counts).toEqual({
       decisions: 3,
-      text: 1,
+      text: 0,
       planning: 1,
       verification: 1,
     });
