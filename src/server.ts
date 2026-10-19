@@ -187,13 +187,22 @@ export function startServer(
             return json(await store.publicSettings());
           const file = files[path];
           if (!file) return json({ error: "Not found." }, 404);
-          const content = await Bun.file(new URL(file[0], staticRoot)).text();
+          const content = Bun.file(new URL(file[0], staticRoot));
           return new Response(
-            path === "/" ? content.replace("__TOKEN__", token) : content,
+            path === "/"
+              ? (await content.text()).replace("__TOKEN__", token)
+              : content,
             {
               headers: {
                 ...headers,
                 "Content-Type": `${file[1]}; charset=utf-8`,
+                ...(path === "/"
+                  ? {}
+                  : {
+                      "Last-Modified": new Date(
+                        content.lastModified,
+                      ).toUTCString(),
+                    }),
               },
             },
           );

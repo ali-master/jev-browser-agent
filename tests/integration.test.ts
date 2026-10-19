@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { chromium } from "playwright";
@@ -26,6 +26,40 @@ async function temporary() {
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   return directory;
 }
+
+test("static assets stream bytes and honor matching and stale If-Range dates", async () => {
+  const inspector = startServer({ port: 0 });
+  cleanup.push(() => inspector.close());
+  const url = new URL("/app.js", inspector.url);
+  const full = await fetch(url);
+  expect(full.status).toBe(200);
+  const bytes = new Uint8Array(await full.arrayBuffer());
+  expect(bytes).toEqual(
+    await Bun.file(new URL("../src/static/app.js", import.meta.url)).bytes(),
+  );
+  const modified = full.headers.get("last-modified");
+  expect(modified).not.toBeNull();
+  const partial = await fetch(url, {
+    headers: { Range: "bytes=0-31", "If-Range": modified! },
+  });
+  expect(partial.status).toBe(206);
+  expect(partial.headers.get("content-range")).toBe(
+    `bytes 0-31/${bytes.length}`,
+  );
+  expect(new Uint8Array(await partial.arrayBuffer())).toEqual(
+    bytes.slice(0, 32),
+  );
+  const stale = await fetch(url, {
+    headers: {
+      Range: "bytes=0-31",
+      "If-Range": "Thu, 01 Jan 1970 00:00:00 GMT",
+    },
+  });
+  expect(stale.status).toBe(200);
+  expect(new Uint8Array(await stale.arrayBuffer())).toEqual(bytes);
+  const index = await fetch(inspector.url);
+  expect(await index.text()).not.toContain("__TOKEN__");
+});
 
 function localSite() {
   const site = Bun.serve({
@@ -168,7 +202,7 @@ test("real Chromium + HTTP model transport completes a local task with independe
     await browser.evaluate("document.querySelector('#result').textContent"),
   ).toBe("Results: Lisbon / Design");
   expect(await browser.evaluate("window.submits")).toBe(1);
-  const trace = await readFile(join(directory, "state.json"), "utf8");
+  const trace = await Bun.file(join(directory, "state.json")).text();
   expect(JSON.parse(trace).history).toHaveLength(3);
   expect(trace).not.toContain("test-key");
 });
