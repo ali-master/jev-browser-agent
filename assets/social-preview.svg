@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Jev Browser Agent — A browser that chooses.</title>
+  <desc id="desc">Typed decisions. Real browser actions. An open-source browser agent built with Bun and TypeScript, with the charcoal and orange Jev monogram on a warm white background.</desc>
+  <rect width="1280" height="640" fill="#F5F5F2"/>
+
+  <g font-family="Arial, Helvetica, sans-serif" fill="#20211F">
+    <text x="80" y="90" font-size="30" font-weight="700" letter-spacing="-1.2">Jev</text>
+    <path d="M147 67V92" stroke="#CACBC4"/>
+    <text x="168" y="87" font-size="18" letter-spacing="-.3">Browser Agent</text>
+
+    <text x="78" y="261" font-size="78" font-weight="700" letter-spacing="-4">A browser</text>
+    <text x="78" y="344" font-size="78" font-weight="700" letter-spacing="-4">that chooses.</text>
+    <text x="82" y="405" font-size="23" letter-spacing="-.4" fill="#686B63">Typed decisions. Real browser actions.</text>
+  </g>
+
+  <g transform="translate(718 -15) scale(2.35)">
+    <path d="M160 44H184L196 56V80H160V44Z" fill="#F55B35"/>
+    <path d="M160 96H196V156C196 193.56 165.56 224 128 224C90.44 224 60 193.56 60 156V140L96 152V156C96 173.67 110.33 188 128 188C145.67 188 160 173.67 160 156V96Z" fill="#20211F"/>
+  </g>
+
+  <path d="M80 548H1200" stroke="#D9DBD2"/>
+  <g font-family="Arial, Helvetica, sans-serif" font-size="12" letter-spacing="1.5" fill="#686B63">
+    <text x="80" y="586">BUILT WITH BUN</text>
+    <circle cx="225" cy="582" r="2" fill="#F55B35"/>
+    <text x="245" y="586">OPEN SOURCE</text>
+    <text x="1200" y="586" text-anchor="end" letter-spacing=".3">ali-master / jev-browser-agent</text>
+  </g>
+</svg>
