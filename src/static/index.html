@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="demo-token" content="__TOKEN__" />
+    <title>Jev Browser Agent</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/" aria-label="Homepage" class="brand">Jev<span> Browser Agent</span></a>
+      <div class="local"><span class="dot"></span> Local inspector</div>
+    </header>
+    <main>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">JEV · BROWSER WORKSPACE</p>
+          <h1>Watch the agent work.</h1>
+          <p>See what it chooses, what it does, and what changes on the page.</p>
+        </div>
+        <div class="model-tag" id="model-tag">Configure your models</div>
+      </section>
+      <details id="model-settings" open>
+        <summary>Model settings · local or cloud</summary>
+        <p class="muted">
+          Choose a decision model and a chat helper. Changes apply to the next request. Base URLs
+          usually end in /v1.
+        </p>
+        <form id="settings-form">
+          <div class="settings-grid">
+            <fieldset>
+              <legend>Decision model · Jev / System One</legend>
+              <label for="decision-base">Base URL</label>
+              <input
+                id="decision-base"
+                type="url"
+                required
+                placeholder="http://127.0.0.1:1234/v1"
+                spellcheck="false"
+              />
+              <label for="decision-model">Model identifier</label>
+              <input
+                id="decision-model"
+                required
+                placeholder="Identifier of your loaded decision model"
+                spellcheck="false"
+              />
+              <label for="decision-key">API key</label>
+              <input
+                id="decision-key"
+                type="password"
+                autocomplete="new-password"
+                placeholder="Optional for a local server"
+              />
+              <label class="overlay-control"
+                ><input id="decision-clear" type="checkbox" /> Clear saved API key</label
+              >
+            </fieldset>
+            <fieldset>
+              <legend>Chat helper · checklist and field text</legend>
+              <label for="text-base">Base URL</label>
+              <input
+                id="text-base"
+                type="url"
+                required
+                placeholder="http://127.0.0.1:1234/v1"
+                spellcheck="false"
+              />
+              <label for="text-model">Model identifier</label>
+              <input
+                id="text-model"
+                placeholder="A chat model; required for every task"
+                spellcheck="false"
+              />
+              <label for="text-key">API key</label>
+              <input
+                id="text-key"
+                type="password"
+                autocomplete="new-password"
+                placeholder="Optional for a local server"
+              />
+              <label class="overlay-control"
+                ><input id="text-clear" type="checkbox" /> Clear saved API key</label
+              >
+            </fieldset>
+          </div>
+          <div class="settings-actions">
+            <button id="save-settings" type="submit">Save model settings</button>
+            <span id="settings-status" role="status"></span>
+          </div>
+          <p class="muted">
+            Keys stay on this computer and are sent only to the configured provider. Leave a key
+            blank to retain it. Changing a Base URL clears its old key unless you enter a
+            replacement.
+          </p>
+        </form>
+      </details>
+      <form id="task-form">
+        <div class="task-label">
+          <label for="goal">What should the agent do?</label>
+          <div class="task-options">
+            <select id="scenario" name="scenario" aria-label="Demo scenario">
+              <option value="travel">Travel planner · fixture</option>
+              <option value="research">Reading room · fixture</option>
+              <option value="custom">Your website</option></select
+            ><select id="run-mode" aria-label="Execution mode">
+              <option value="auto">Run automatically</option>
+              <option value="manual">Step by step</option>
+            </select>
+          </div>
+        </div>
+        <div id="start-url-row" hidden>
+          <label for="start-url">Starting page URL</label>
+          <input id="start-url" type="url" placeholder="https://example.com" spellcheck="false" />
+        </div>
+        <div class="task-row">
+          <textarea id="goal" name="goal" rows="2">
+Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textarea
+          ><button type="submit" id="start" class="primary">Start task <span>↗</span></button>
+        </div>
+      </form>
+      <div class="toolbar">
+        <div class="status">
+          <span class="dot" id="status-dot"></span
+          ><span id="status" role="status">Ready to explore</span>
+        </div>
+        <div class="controls">
+          <label class="overlay-control"
+            ><input name="pace" id="pace" type="checkbox" checked /> Preview each action</label
+          >
+          <label class="overlay-control"
+            ><input name="overlays" id="overlays" type="checkbox" /> All targets</label
+          ><button type="button" id="choose" disabled>Choose next</button
+          ><button type="button" id="execute" disabled>Execute choice</button
+          ><button type="button" id="auto" class="primary" disabled>Run automatically</button
+          ><button type="button" id="stop" hidden>Pause</button>
+        </div>
+      </div>
+      <div id="error" role="alert" hidden></div>
+      <section class="workspace">
+        <div class="browser-panel">
+          <div class="browser-bar">
+            <div class="traffic"><b></b><b></b><b></b></div>
+            <span id="url">No page open</span><span class="live" id="feed-status">Connecting</span>
+          </div>
+          <div class="action-banner" id="action-banner" aria-live="polite">
+            <span class="action-icon" id="action-icon">↗</span>
+            <div>
+              <strong id="action-summary">Your browser will appear here</strong
+              ><span id="action-detail">Start a task to follow the agent in real time.</span>
+            </div>
+            <button id="return-live" type="button" hidden>Return to live view</button>
+          </div>
+          <div class="viewport" id="viewport">
+            <div class="empty" id="empty">
+              <p class="empty-symbol">[ ↗ ]</p>
+              <h2>Watch the decision happen.</h2>
+              <p>
+                Start a task to see a real browser, its available<br />actions, and the model's
+                choice.
+              </p>
+            </div>
+            <img id="screenshot" alt="Live screenshot of the controlled browser" hidden />
+            <div id="targets"></div>
+          </div>
+          <div class="browser-footer">
+            <span id="page-title">Isolated browser</span
+            ><span id="frame-note">Actual browser frames · no actions yet</span>
+          </div>
+        </div>
+        <aside aria-label="Agent progress">
+          <div class="progress-header">
+            <span class="eyebrow">AGENT PROGRESS</span><span id="progress-count">Not started</span>
+          </div>
+          <div class="progress-track"><div id="progress-bar"></div></div>
+          <div class="current-action">
+            <span class="phase-label" id="phase-label">READY</span>
+            <h2 id="choice-title">Start with a task</h2>
+            <p id="choice-detail">
+              The agent will make a checklist, then work through it one step at a time.
+            </p>
+            <span id="phase-time"></span>
+          </div>
+          <ol class="phase-flow" aria-label="Execution stages">
+            <li data-phase="planning">Plan</li>
+            <li data-phase="deciding">Choose</li>
+            <li data-phase="acting">Act</li>
+            <li data-phase="observing">Verify</li>
+          </ol>
+          <div class="checklist-heading">
+            <h3>Task checklist</h3>
+            <span>Checked from the page</span>
+          </div>
+          <ol id="plan" class="plan">
+            <li class="plan-empty">Your steps will appear when the agent starts.</li>
+          </ol>
+          <div class="last-result" id="last-result">
+            <span>LAST OBSERVED RESULT</span>
+            <p id="result-summary">No actions yet.</p>
+          </div>
+          <details id="decision-details" class="decision-details">
+            <summary>Model details <span id="action-count">0 elements</span></summary>
+            <p class="muted">
+              Scores help explain the choice. They are not a guarantee of success.
+            </p>
+            <div class="metrics">
+              <div><span>Decision time</span><strong id="latency">—</strong></div>
+              <div><span>Target score</span><strong id="confidence">—</strong></div>
+              <div><span>Operation</span><strong id="completion">—</strong></div>
+            </div>
+            <div id="operation-choices" class="operation-choices"></div>
+            <p class="distribution-label">
+              Available targets <span id="ranking-note">Not ranked</span>
+            </p>
+            <div id="choices" class="choices"></div>
+          </details>
+        </aside>
+      </section>
+      <section class="trace">
+        <div class="trace-heading">
+          <div>
+            <h2>Activity <span id="step-count">0 actions</span></h2>
+            <p>Choose a frame to see the page after that action.</p>
+          </div>
+          <button type="button" id="download" disabled>Export trace ↓</button>
+        </div>
+        <nav id="journey" aria-label="Pages visited"></nav>
+        <div id="history" class="filmstrip">
+          <p class="muted">The starting page and each action will appear here.</p>
+        </div>
+      </section>
+      <details>
+        <summary>What the model sees</summary>
+        <pre id="model-state">Start a demo to inspect its structured state.</pre>
+      </details>
+      <footer>
+        <span>Jev Browser Agent · Bun · Based on Jev Ultrafast</span
+        ><span id="helper">Chat helper loading</span>
+      </footer>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
