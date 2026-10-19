@@ -37,6 +37,11 @@ export async function postJson(
     throw new Error(
       "Set the model identifier in Settings or .env before running.",
     );
+  const hostname = URL.parse(endpoint.baseUrl)?.hostname ?? "";
+  const loopback =
+    hostname === "localhost" ||
+    hostname === "[::1]" ||
+    /^127\.\d+\.\d+\.\d+$/.test(hostname);
   for (let attempt = 0; attempt < 3; attempt++) {
     const started = performance.now();
     const pricing = endpoint.pricing ? { ...endpoint.pricing } : undefined;
@@ -56,6 +61,7 @@ export async function postJson(
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(60_000),
           redirect: "manual",
+          proxy: loopback ? false : undefined,
         });
       } catch {
         throw new ProviderFailure(

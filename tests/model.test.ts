@@ -22,6 +22,62 @@ afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop(true);
 });
 
+test("local model calls bypass proxy variables while cloud calls use them", async () => {
+  const local = provider(() => Response.json({ via: "local" }));
+  let proxyRequests = 0;
+  const proxy = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => {
+      proxyRequests++;
+      return Response.json({ via: "proxy" });
+    },
+  });
+  servers.push(local.server, proxy);
+  const proxyUrl = `http://127.0.0.1:${proxy.port}`;
+  for (const [baseUrl, via] of [
+    [local.endpoint.baseUrl, "local"],
+    [local.endpoint.baseUrl.replace("127.0.0.1", "localhost"), "local"],
+    ["http://provider.invalid/v1", "proxy"],
+  ] as const) {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        "--no-env-file",
+        "--eval",
+        `import { postJson } from "./src/model";
+console.log(JSON.stringify(await postJson(${JSON.stringify({ baseUrl, apiKey: "", model: "test" })}, "systemone", {})));`,
+      ],
+      {
+        cwd: `${import.meta.dir}/..`,
+        env: {
+          ...process.env,
+          HTTP_PROXY: proxyUrl,
+          http_proxy: proxyUrl,
+          HTTPS_PROXY: proxyUrl,
+          https_proxy: proxyUrl,
+          ALL_PROXY: proxyUrl,
+          all_proxy: proxyUrl,
+          NO_PROXY: "",
+          no_proxy: "",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: 5000,
+      },
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({ via });
+  }
+  expect(proxyRequests).toBe(1);
+});
+
 test.each(["ready", "invalid", "unauthorized"])(
   "connection probes validate both real protocols: %s",
   async (mode) => {
