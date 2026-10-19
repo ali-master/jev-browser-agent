@@ -385,6 +385,19 @@
           description: "A hillside retreat for slower mornings and long walks.",
         },
       ];
+      if (new URLSearchParams(location.search).get("crowded") === "1") {
+        places.unshift(
+          ...Array.from({ length: 9 }, (_, index) => ({
+            name: `Atelier ${index + 1}`,
+            city: "Lisbon",
+            category: "Design",
+            free: true,
+            price: 100 + index * 10,
+            description:
+              "An independent city studio in the crowded local fixture.",
+          })),
+        );
+      }
       function art() {
         return '<div class="photo"><span class="sun"></span><span class="tree"></span></div>';
       }

@@ -7,6 +7,7 @@ let state = null,
   connected = false;
 let reviewStep = null,
   liveFrame = null,
+  livePointer = null,
   historyKey = "";
 const stopped = () =>
   ["done", "blocked", "error", "closed"].includes(state?.status);
@@ -14,6 +15,10 @@ const goals = {
   custom: "",
   travel:
     "Find a Design stay in Lisbon with Free cancellation and open Casa Flora.",
+  crowded:
+    "Type Lisbon in Destination; select Design in Stay category; enable Free cancellation; submit with Find stays; scroll to Casa Flora and click View Casa Flora to open its details page.",
+  flights:
+    "Reject optional cookies if prompted, then open the Google Flights flight search page.",
   research:
     "Open the article about using finite choices to control browser agents.",
 };
@@ -32,6 +37,7 @@ function applyState(next) {
   if (next.run_id !== state?.run_id) {
     reviewStep = null;
     liveFrame = null;
+    livePointer = null;
     historyKey = "";
   }
   if (
@@ -42,7 +48,9 @@ function applyState(next) {
   const changed =
     next.revision !== state?.revision || next.text_model !== state?.text_model;
   state = next;
+  livePointer = next.pointer ?? null;
   if (changed) render();
+  else renderPointer();
 }
 async function call(name, body = {}) {
   const response = await fetch(`/api/${name}`, {
@@ -303,6 +311,35 @@ function renderBrowser() {
             return `<div class="target ${chosen ? "selected" : ""}" data-action="${i + 1}" style="left:${(100 * a.rect.x) / page.w}%;top:${(100 * a.rect.y) / page.h}%;width:${(100 * a.rect.w) / page.w}%;height:${(100 * a.rect.h) / page.h}%"><span>${chosen ? "Next target" : i + 1}</span></div>`;
           })
           .join("");
+  renderPointer();
+}
+
+function renderPointer() {
+  const pointer = livePointer;
+  const node = $("agent-pointer");
+  const url = liveFrame?.url || state?.page?.url;
+  node.hidden =
+    !pointer ||
+    reviewStep !== null ||
+    !connected ||
+    pointer.run_id !== state?.run_id ||
+    pointer.url !== url ||
+    $("screenshot").hidden;
+  if (node.hidden) return;
+  node.style.left = `${(100 * pointer.x) / pointer.w}%`;
+  node.style.top = `${(100 * pointer.y) / pointer.h}%`;
+  node.dataset.phase = pointer.phase;
+  node.dataset.edge = pointer.x > pointer.w * 0.7 ? "right" : "left";
+  node.dataset.bottom = pointer.y > pointer.h * 0.85;
+  const verb =
+    pointer.phase === "scroll"
+      ? pointer.deltaY < 0
+        ? "Scroll ↑"
+        : "Scroll ↓"
+      : pointer.phase === "press" || pointer.phase === "release"
+        ? "Act"
+        : "Agent";
+  $("pointer-label").textContent = `${verb} · ${pointer.label}`;
 }
 function resultFor(step) {
   const entry = state.history.find((h) => h.step === step);
@@ -595,6 +632,12 @@ events.addEventListener("frame", (event) => {
   if (frame.run_id !== state?.run_id) return;
   liveFrame = frame;
   renderBrowser();
+});
+events.addEventListener("pointer", (event) => {
+  const pointer = JSON.parse(event.data);
+  if (pointer.run_id !== state?.run_id) return;
+  livePointer = pointer;
+  renderPointer();
 });
 events.addEventListener("error", () => {
   connected = false;

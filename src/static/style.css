@@ -141,13 +141,144 @@ button,
 textarea {
   font: inherit;
 }
-select {
+.task-select {
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 8px;
   color: #435448;
-  background: #f8faf6;
+  background: #fff;
   font-size: 12px;
-  padding: 6px;
+  font-weight: 500;
+  min-height: 40px;
+  padding: 9px 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px #21352405;
+  transition:
+    background 0.16s,
+    border-color 0.16s,
+    box-shadow 0.16s;
+}
+.task-select:hover:not(:disabled) {
+  background: #f8faf6;
+  border-color: #b1c4b6;
+}
+.task-select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* Keep the native picker as a fallback where customizable selects are unavailable. */
+@supports (appearance: base-select) {
+  .task-select,
+  .task-select::picker(select) {
+    appearance: base-select;
+  }
+  .task-select {
+    gap: 16px;
+    align-items: center;
+  }
+  .task-select:open {
+    border-color: #8eaf98;
+    box-shadow: 0 0 0 3px #1767430d;
+  }
+  .task-select::picker-icon {
+    content: "";
+    width: 7px;
+    height: 7px;
+    margin-inline-start: auto;
+    margin-block-start: -4px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    rotate: 45deg;
+    color: #7c887e;
+    transition: rotate 0.16s;
+  }
+  .task-select:open::picker-icon {
+    rotate: 225deg;
+    margin-block-start: 3px;
+  }
+  .task-select::picker(select) {
+    width: 320px;
+    max-width: calc(100vw - 32px);
+    max-height: min(460px, calc(100dvh - 32px));
+    margin-block: 7px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    color: #252b27;
+    box-shadow:
+      0 16px 48px -12px #182b2333,
+      0 4px 12px #182b230d;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .task-select optgroup {
+    padding: 7px 4px 4px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 2;
+    letter-spacing: 0.06em;
+  }
+  .task-select optgroup + optgroup {
+    margin-top: 5px;
+    padding-top: 10px;
+    border-top: 1px solid #edf0eb;
+  }
+  .task-select option {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 16px;
+    align-items: center;
+    gap: 3px 12px;
+    min-height: 62px;
+    padding: 10px 12px;
+    margin-block: 3px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #29372e;
+    font-size: 12px;
+    font-weight: 550;
+    letter-spacing: normal;
+    line-height: 1.5;
+    white-space: normal;
+    cursor: pointer;
+  }
+  .task-select option::after {
+    content: attr(data-description);
+    grid-column: 1;
+    grid-row: 2;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  .task-select option:hover,
+  .task-select option:focus-visible {
+    background: #f2f5f0;
+    outline: none;
+  }
+  .task-select option:checked {
+    background: #edf5ee;
+    color: var(--green);
+  }
+  .task-select option:checked:hover,
+  .task-select option:checked:focus-visible {
+    background: #e2eee4;
+  }
+  .task-select option::checkmark {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    justify-self: end;
+    color: var(--green);
+    font-size: 15px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-select,
+  .task-select::picker-icon {
+    transition: none;
+  }
 }
 #goal {
   width: 100%;
@@ -416,6 +547,95 @@ input[type="checkbox"] {
     sans-serif;
   top: -25px;
   padding: 3px 7px;
+}
+.agent-pointer {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  color: var(--orange);
+  transition:
+    left 35ms linear,
+    top 35ms linear;
+  filter: drop-shadow(0 2px 3px #183d3238);
+}
+.agent-pointer svg {
+  display: block;
+}
+.pointer-label {
+  position: absolute;
+  top: 28px;
+  left: 18px;
+  max-width: 220px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: #173f35;
+  color: white;
+  font:
+    600 11px system-ui,
+    sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-pointer[data-edge="right"] .pointer-label {
+  left: auto;
+  right: 4px;
+}
+.agent-pointer[data-bottom="true"] .pointer-label {
+  top: auto;
+  bottom: 6px;
+}
+.pointer-ring {
+  position: absolute;
+  left: -17px;
+  top: -17px;
+  width: 34px;
+  height: 34px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  opacity: 0;
+}
+.agent-pointer[data-phase="press"] .pointer-ring {
+  opacity: 1;
+  background: #ed67382e;
+  transform: scale(0.7);
+}
+.agent-pointer[data-phase="release"] .pointer-ring {
+  animation: pointer-click 650ms ease-out both;
+}
+.agent-pointer[data-phase="scroll"] .pointer-ring {
+  opacity: 1;
+  border-radius: 9px;
+  animation: pointer-scroll 280ms ease-in-out infinite alternate;
+}
+@keyframes pointer-click {
+  from {
+    transform: scale(0.7);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+@keyframes pointer-scroll {
+  from {
+    transform: translateY(-4px);
+  }
+  to {
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-pointer {
+    transition: none;
+  }
+  .agent-pointer .pointer-ring {
+    animation: none;
+  }
+  .agent-pointer[data-phase="release"] .pointer-ring {
+    opacity: 0.6;
+  }
 }
 aside {
   min-width: 0;

@@ -261,6 +261,13 @@ test("inspector saves private settings and drives a complete task through its co
   expect(await page.locator("#connection-checks").textContent()).not.toContain(
     "private-test-key",
   );
+  await page.locator("#scenario").selectOption("crowded");
+  expect(await page.locator("#goal").inputValue()).toContain(
+    "scroll to Casa Flora",
+  );
+  await page.locator("#scenario").selectOption("flights");
+  expect(await page.locator("#goal").inputValue()).toContain("Google Flights");
+  expect(await page.locator("#start-url-row").isVisible()).toBe(false);
   await page.locator("#scenario").selectOption("custom");
   await page.locator("#start-url").fill(url);
   await page.locator("#goal").fill("Search for Design hotels in Lisbon");
@@ -296,6 +303,15 @@ test("inspector saves private settings and drives a complete task through its co
   const state = await (await fetch(`${inspector.url}/api/state`)).json();
   expect(state.page.text).toContain("Results: Lisbon / Design");
   expect(state.history).toHaveLength(3);
+  expect(state.pointer).toMatchObject({
+    phase: "release",
+    label: "Search hotels",
+    run_id: state.run_id,
+  });
+  expect(await page.locator("#agent-pointer").isVisible()).toBe(true);
+  expect(await page.locator("#pointer-label").textContent()).toContain(
+    "Search hotels",
+  );
   expect(JSON.stringify(state)).not.toContain("private-test-key");
   expect(state.frames).toHaveLength(4);
   expect(await page.locator("#progress-count").textContent()).toBe(
@@ -312,6 +328,7 @@ test("inspector saves private settings and drives a complete task through its co
   expect([...firstImage.slice(0, 2)]).toEqual([255, 216]);
   await page.locator('#history [data-step="1"]').click();
   expect(await page.locator("#feed-status").textContent()).toBe("REVIEW");
+  expect(await page.locator("#agent-pointer").isVisible()).toBe(false);
   expect(await page.locator("#action-summary").textContent()).toContain(
     "Type “Lisbon” in City",
   );
@@ -323,6 +340,7 @@ test("inspector saves private settings and drives a complete task through its co
   ).toHaveLength(3);
   await page.locator("#return-live").click();
   expect(await page.locator("#feed-status").textContent()).toBe("FINAL PAGE");
+  expect(await page.locator("#agent-pointer").isVisible()).toBe(true);
   expect(await page.locator("#screenshot").getAttribute("src")).toStartWith(
     "data:image/jpeg",
   );

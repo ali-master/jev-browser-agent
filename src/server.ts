@@ -1,5 +1,6 @@
 import { Agent } from "./agent";
 import { Browser } from "./browser";
+import type { AgentPointer } from "./browser";
 import { SettingsStore, object } from "./config";
 import { MAX_STEPS } from "./questions";
 import { checkModels } from "./model";
@@ -33,6 +34,7 @@ export function startServer(
   let textModel = "Not configured";
   let liveAvailable = false;
   let lastError: string | null = null;
+  let latestPointer: (AgentPointer & { run_id: string }) | null = null;
   let latestFrame: {
     image: string;
     url: string;
@@ -66,6 +68,7 @@ export function startServer(
     run_id: runId,
     server_busy: busy,
     live_available: liveAvailable,
+    pointer: latestPointer,
     error: lastError,
     frames: [...frames].map(([step, frame]) => ({
       step,
@@ -253,12 +256,20 @@ export function startServer(
             if (!goal || goal.length > 2000)
               throw new Error("Enter a goal of 1–2,000 characters.");
             const scenario = body.scenario ?? "custom";
-            if (!["custom", "travel", "research"].includes(String(scenario)))
+            if (
+              !["custom", "travel", "crowded", "research", "flights"].includes(
+                String(scenario),
+              )
+            )
               throw new Error("Unknown demo scenario.");
             const url =
               scenario === "custom"
                 ? body.url
-                : `${origin}/fixture.html?scenario=${scenario}`;
+                : scenario === "flights"
+                  ? "https://www.google.com/travel/flights?hl=en"
+                  : scenario === "crowded"
+                    ? `${origin}/fixture.html?scenario=travel&crowded=1`
+                    : `${origin}/fixture.html?scenario=${scenario}`;
             if (typeof url !== "string" || !url.trim())
               throw new Error("Enter a starting page URL.");
             const config = await store.read();
@@ -276,15 +287,21 @@ export function startServer(
             runId = crypto.randomUUID();
             frames.clear();
             latestFrame = null;
+            latestPointer = null;
             liveAvailable = false;
             opening = Date.now();
             textModel = config.text.model || "Not configured";
             publishState();
             agent = await Agent.create(url, goal, {
               screenshots: true,
+              showPointer: true,
               settings: () => store.read(),
               cdpUrl: options.cdpUrl,
               onUpdate: publishState,
+              onPointer(pointer) {
+                latestPointer = { ...pointer, run_id: runId };
+                broadcast("pointer", latestPointer);
+              },
             });
             opening = 0;
             if (shuttingDown) {

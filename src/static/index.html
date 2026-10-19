@@ -158,13 +158,64 @@
         <div class="task-label">
           <label for="goal">What should the agent do?</label>
           <div class="task-options">
-            <select id="scenario" name="scenario" aria-label="Demo scenario">
-              <option value="travel">Travel planner · fixture</option>
-              <option value="research">Reading room · fixture</option>
-              <option value="custom">Your website</option></select
-            ><select id="run-mode" aria-label="Execution mode">
-              <option value="auto">Run automatically</option>
-              <option value="manual">Step by step</option>
+            <select
+              id="scenario"
+              class="task-select"
+              name="scenario"
+              aria-label="Demo scenario"
+            >
+              <optgroup label="Local demos">
+                <option
+                  value="travel"
+                  data-description="Find a stay using search and filters."
+                >
+                  Travel planner
+                </option>
+                <option
+                  value="crowded"
+                  data-description="More choices, scrolling, and a longer journey."
+                >
+                  Travel planner · crowded
+                </option>
+                <option
+                  value="research"
+                  data-description="Find and open an article in the reading room."
+                >
+                  Reading room
+                </option>
+              </optgroup>
+              <optgroup label="Live browsing">
+                <option
+                  value="flights"
+                  data-description="Open the real Google Flights website."
+                >
+                  Google Flights
+                </option>
+                <option
+                  value="custom"
+                  data-description="Bring your own URL and give the agent a goal."
+                >
+                  Your website
+                </option>
+              </optgroup>
+            </select>
+            <select
+              id="run-mode"
+              class="task-select"
+              aria-label="Execution mode"
+            >
+              <option
+                value="auto"
+                data-description="Let the agent choose and perform each action."
+              >
+                Run automatically
+              </option>
+              <option
+                value="manual"
+                data-description="Review each choice before you execute it."
+              >
+                Step by step
+              </option>
             </select>
           </div>
         </div>
@@ -240,6 +291,24 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
               hidden
             />
             <div id="targets"></div>
+            <div
+              id="agent-pointer"
+              class="agent-pointer"
+              aria-hidden="true"
+              hidden
+            >
+              <span class="pointer-ring"></span>
+              <svg width="28" height="32" viewBox="0 0 28 32" fill="none">
+                <path
+                  d="M2 2L24 18L14 19L9 29L2 2Z"
+                  fill="currentColor"
+                  stroke="white"
+                  stroke-width="2.5"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span class="pointer-label" id="pointer-label">Agent</span>
+            </div>
           </div>
           <div class="browser-footer">
             <span id="page-title">Isolated browser</span
