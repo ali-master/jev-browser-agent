@@ -220,6 +220,7 @@ The timings and demo videos in the original Jev Ultrafast README describe its Py
 
 ```sh
 bun run check          # TypeScript, tests and build
+bun run typecheck      # Bun's built-in checker (bun --check)
 bun run format:check   # Source formatting
 bun run test:browser   # Browser and HTTP integration tests
 bun run dev            # Inspector with Bun's watcher
@@ -228,6 +229,12 @@ bun dist/cli.js --help # Built CLI
 ```
 
 Install Chromium with `bun run browser:install` before running browser tests. Tests use local fixtures and mock model servers; they do not need API keys or call paid providers. Dependencies are pinned in [`package.json`](package.json) and [`bun.lock`](bun.lock).
+
+[Bun 1.4.3](https://bun.sh/blog/bun-v1.4.3) checks types before tests and bundling. The `typecheck` script uses `bun --check` to avoid the project's `check` script taking precedence over `bun check`. TypeScript remains installed to emit `.d.ts` files; Bun's checker does not emit declarations. Internal module imports omit file extensions.
+
+Page fingerprints use `Bun.CryptoHasher`, file reads use `Bun.file`, and build assets use `Bun.Glob` and `Bun.write`. Static inspector files stream through `Bun.serve`, including conditional range requests. Loopback model requests bypass proxy environment variables; cloud requests honor them.
+
+Node-compatible imports remain where they preserve required behavior: argument and `.env` parsing, path/directory operations, atomic private settings writes, and prototype-sensitive action validation. Bun's strict deep comparison accepts null-prototype copies, and `Bun.write` did not preserve `0600` for string input on the tested macOS Bun 1.4.3 runtime. These boundaries retain their existing implementations and regression tests.
 
 ## Credits
 
