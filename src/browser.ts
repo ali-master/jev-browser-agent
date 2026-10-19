@@ -190,8 +190,9 @@ export class Browser implements BrowserDriver {
         const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
         if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight || !e.contains(document.elementFromPoint(x,y))) return null;
         if (action.kind==='select') {
-          if (e.tagName!=='SELECT' || ![...e.options].some(o=>o.value===action.value && !o.disabled && !o.closest('optgroup[disabled]'))) return null;
-          e.value=action.value;
+          const option=e.options?.[action.option_index];
+          if (e.tagName!=='SELECT' || !Number.isSafeInteger(action.option_index) || !option || option!==c.nodes.get(action.option_node) || option.value!==action.value || option.disabled || option.closest('optgroup[disabled]')) return null;
+          e.selectedIndex=action.option_index;
           e.dispatchEvent(new Event('input',{bubbles:true}));
           e.dispatchEvent(new Event('change',{bubbles:true}));
         }

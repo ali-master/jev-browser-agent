@@ -40,6 +40,8 @@ test("one element index has separate compatible operation heads and indexed nati
     role: "combobox",
     label: "Category → Design",
     value: "Design",
+    option_index: 1,
+    option_node: 31,
     current_value: "All",
   });
   actions.push({
@@ -49,6 +51,8 @@ test("one element index has separate compatible operation heads and indexed nati
     role: "combobox",
     label: "Category → Coastal",
     value: "Coastal",
+    option_index: 2,
+    option_node: 32,
     current_value: "All",
   });
   const space = actionSpace(actions);

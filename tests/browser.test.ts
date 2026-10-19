@@ -166,3 +166,49 @@ test("an interrupted mutating evaluation is never classified as a safe stale ret
     StalePage,
   );
 });
+
+test.each([
+  [
+    '<option selected value="start">Choose</option><option value="1">Single</option><option value="1">Double</option>',
+    "Double",
+    2,
+  ],
+  [
+    '<option disabled value="1">Unavailable</option><option selected value="start">Choose</option><option value="1">Available</option>',
+    "Available",
+    2,
+  ],
+  [
+    '<optgroup disabled><option value="1">Unavailable</option></optgroup><option selected value="start">Choose</option><option value="1">Available</option>',
+    "Available",
+    2,
+  ],
+])(
+  "selects the exact observed option despite duplicate values: %s",
+  async (options, label, index) => {
+    await browser.evaluate(
+      `document.body.innerHTML=${JSON.stringify(`<label>Room<select>${options}</select></label>`)};window.changes=0;document.querySelector('select').onchange=()=>window.changes++;true`,
+    );
+    const state = await browser.observe();
+    const action = state.actions.find(
+      (a) => a.kind === "select" && a.label.endsWith(String(label)),
+    )!;
+    await browser.act(action, state);
+    expect(await browser.evaluate("document.querySelector('select').selectedIndex")).toBe(index);
+    expect(await browser.evaluate("window.changes")).toBe(1);
+  },
+);
+
+test.each([
+  "s.options[1].disabled=true",
+  "s.options[1].value='other'",
+  "s.prepend(s.options[1])",
+  "s.options[1].outerHTML=s.options[1].outerHTML",
+])("rejects changed option identity or eligibility: %s", async (mutation) => {
+  const state = await browser.observe();
+  const action = state.actions.find((a) => a.kind === "select")!;
+  await browser.evaluate(
+    `(()=>{const s=document.querySelector('select');${mutation};return true})()`,
+  );
+  await expect(browser.act(action, state)).rejects.toBeInstanceOf(StalePage);
+});

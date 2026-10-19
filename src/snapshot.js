@@ -111,6 +111,15 @@
       e.getAttribute("aria-selected"),
       e.getAttribute("href"),
       scope?.innerText?.slice(0, 6000) || "",
+      e.tagName === "SELECT"
+        ? [...e.options].map((o) => [
+            identity(o),
+            o.value,
+            o.label,
+            o.disabled,
+            Boolean(o.closest("optgroup[disabled]")),
+          ])
+        : null,
     ];
   };
   const actions = [];
@@ -150,6 +159,8 @@
             ...base,
             kind: "select",
             value: o.value,
+            option_index: o.index,
+            option_node: identity(o),
             current_value: [...e.selectedOptions].map((o) => o.label).join(", "),
             label: base.label + " → " + o.label,
           });

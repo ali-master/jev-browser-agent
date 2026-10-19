@@ -15,7 +15,7 @@ interface Target {
 }
 export type Action =
   | (Target & { kind: "click" | "fill" })
-  | (Target & { kind: "select"; value: string })
+  | (Target & { kind: "select"; value: string; option_index: number; option_node: number })
   | { id: string; kind: "scroll"; label: string; delta: number }
   | { id: string; kind: "wait"; label: string };
 
