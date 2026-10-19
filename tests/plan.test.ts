@@ -298,3 +298,86 @@ test("action text checks must come from the goal, not invented counts or message
   expect(() => validatePlan(plan, "Search Lisbon")).toThrow("guesses an action's text outcome");
   expect(validatePlan(plan, 'Click Search and wait for "3 places"')).toHaveLength(1);
 });
+
+test.each(["mismatched ref", "invented ref", "checkbox value", "button checked"])(
+  "rejects a planner's invalid observed-control binding: %s",
+  (mode) => {
+    const state = page();
+    Object.assign(state.actions[0]!, { ref: "fixture-document:10", scope: "Search form" });
+    state.actions.push({
+      id: "e4",
+      kind: "click",
+      label: "Refund",
+      role: "checkbox",
+      node: 30,
+      checked: "false",
+      value: "on",
+      ref: "fixture-document:30",
+    });
+    let check: CompletionCheck = {
+      kind: "value",
+      label: "Search",
+      equals: "Lisbon",
+      ref: "fixture-document:10",
+      scope: "Search form",
+    };
+    if (mode === "mismatched ref") check.ref = "fixture-document:30";
+    if (mode === "invented ref") check.ref = "fixture-document:999";
+    if (mode === "checkbox value") check = { kind: "value", label: "Refund", equals: "on" };
+    if (mode === "button checked") check = { kind: "checked", label: "Go", equals: true };
+    expect(() =>
+      validatePlan(
+        { steps: [{ instruction: "Complete the field", checks: [check] }] },
+        "Find Lisbon",
+        state,
+      ),
+    ).toThrow();
+  },
+);
+
+test("a mismatched field reference gets one repair with the observed context", async () => {
+  const state = page();
+  Object.assign(state.actions[0]!, { ref: "fixture-document:10", scope: "Search form" });
+  let calls = 0;
+  const p = provider(async (request) => {
+    const body = await request.json();
+    calls++;
+    if (calls === 2) expect(body.messages.at(-1).content).toContain("SAME observed element");
+    return chatResponse({
+      steps: [
+        {
+          instruction: "Enter Lisbon",
+          checks: [
+            {
+              kind: "value",
+              label: "Search",
+              equals: "Lisbon",
+              ref: calls === 1 ? "fixture-document:999" : "fixture-document:10",
+              scope: "Search form",
+            },
+          ],
+        },
+      ],
+    });
+  });
+  servers.push(p.server);
+  const plan = await createPlan(state, "Enter Lisbon", async () => p.endpoint);
+  expect(calls).toBe(2);
+  expect((plan.steps[0]!.checks[0] as { ref: string }).ref).toBe("fixture-document:10");
+  expect(
+    validatePlan(
+      {
+        steps: [
+          {
+            instruction: "Enter on next page",
+            checks: [
+              { kind: "value", label: "Unseen field", equals: "Lisbon", ref: null, scope: null },
+            ],
+          },
+        ],
+      },
+      "Enter Lisbon",
+      state,
+    ),
+  ).toHaveLength(1);
+});

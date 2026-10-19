@@ -22,9 +22,9 @@ Typing and native dropdown steps use ONLY value checks. Checkbox state steps use
 Do not add click checks for those controls: their resulting value/state is the evidence.
 Do not add purchases, bookings or any action beyond the goal. Do not invent outcome messages.
 Supported checks, with ONLY these exact keys:
-{"kind":"value","label":"field or select label","equals":"required value"}
-{"kind":"checked","label":"checkbox/radio/switch label","equals":true}
-{"kind":"action","label":"button or link label","action":"click"}
+{"kind":"value","label":"field or select label","equals":"required value","ref":null,"scope":null}
+{"kind":"checked","label":"checkbox/radio/switch label","equals":true,"ref":null,"scope":null}
+{"kind":"action","label":"button or link label","action":"click","ref":null,"scope":null}
 {"kind":"title","includes":"distinctive destination title"}
 {"kind":"url","includes":"expected URL or fragment"}
 {"kind":"text","includes":"distinctive visible outcome text"}
@@ -133,7 +133,7 @@ const controlKeys = (value: Record<string, unknown>, expected: string[]) =>
     (value) => value === undefined || value === null || nonempty(value),
   );
 
-export function validatePlan(value: unknown, goal = ""): TaskStep[] {
+export function validatePlan(value: unknown, goal = "", page?: PageState): TaskStep[] {
   if (
     !object(value) ||
     !keys(value, ["steps"]) ||
@@ -173,6 +173,34 @@ export function validatePlan(value: unknown, goal = ""): TaskStep[] {
                 nonempty(check.includes);
       if (!valid)
         throw new Error("Completion checks must use only the documented kinds and exact keys.");
+      if (page && ["value", "checked", "action"].includes(String(check.kind))) {
+        const elements = actionSpace(page.actions).elements;
+        const matches = elements.filter(
+          (element) =>
+            normalized(element.label) === normalized(check.label as string) &&
+            (!check.ref || element.ref === check.ref) &&
+            (!check.scope || normalized(element.scope ?? "") === normalized(check.scope as string)),
+        );
+        if (check.ref && matches.length !== 1)
+          throw new Error(
+            `Step ${index + 1} uses an unobserved or mismatched control identity. Copy ref, scope and label from the SAME observed element; use null for future page references.`,
+          );
+        if (
+          matches.length &&
+          !matches.some((element) =>
+            check.kind === "checked"
+              ? element.checked !== undefined
+              : check.kind === "action"
+                ? element.operations.includes("CLICK")
+                : element.operations.some(
+                    (operation) => operation === "TYPE_TEXT" || operation === "SELECT",
+                  ),
+          )
+        )
+          throw new Error(
+            `Step ${index + 1} uses the wrong check kind for ${check.label}. Checkbox/radio/switch require checked; editable fields/dropdowns require value; buttons/links require action plus an outcome.`,
+          );
+      }
     }
     if (checks.every((check) => check.kind === "action"))
       throw new Error(
@@ -281,7 +309,7 @@ export async function createPlan(
       continue;
     }
     try {
-      return { steps: validatePlan(output, goal), calls };
+      return { steps: validatePlan(output, goal, page), calls };
     } catch (error) {
       correction = `Correct the previous checklist error: ${(error as Error).message}`;
     }
@@ -487,7 +515,7 @@ The top-level output MUST be completion_review with complete, answer, evidence, 
         continue;
       if (!value.complete && value.answer !== null) continue;
       const missing_steps = value.missing_steps.length
-        ? validatePlan({ steps: value.missing_steps }, goal)
+        ? validatePlan({ steps: value.missing_steps }, goal, page)
         : [];
       return {
         complete: value.complete,
