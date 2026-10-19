@@ -1,0 +1,145 @@
+export type TargetOperation = "CLICK" | "TYPE_TEXT" | "SELECT";
+export type Operation = TargetOperation | "SCROLL_UP" | "SCROLL_DOWN" | "WAIT" | "DONE" | "BLOCKED";
+
+interface Target {
+  id: string;
+  node: number;
+  label: string;
+  role: string;
+  value?: string;
+  current_value?: string;
+  checked?: string;
+  selected?: string;
+  expanded?: string;
+  rect?: { x: number; y: number; w: number; h: number };
+}
+export type Action =
+  | (Target & { kind: "click" | "fill" })
+  | (Target & { kind: "select"; value: string })
+  | { id: string; kind: "scroll"; label: string; delta: number }
+  | { id: string; kind: "wait"; label: string };
+
+export interface PageState {
+  url: string;
+  title: string;
+  text: string;
+  w: number;
+  h: number;
+  scroll: { y: number; height: number };
+  actions: Action[];
+  marker: unknown[];
+  page_key: unknown[];
+  guards: Record<string, unknown>;
+  omitted_actions: number;
+  fingerprint: string;
+  screenshot?: string;
+}
+
+export interface ElementView {
+  index: string;
+  label: string;
+  role: string;
+  value?: string;
+  checked?: string;
+  selected?: string;
+  expanded?: string;
+  operations: TargetOperation[];
+  options?: { index: string; label: string; value: string }[];
+}
+export interface Endpoint {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+export interface Settings {
+  decision: Endpoint;
+  text: Endpoint;
+}
+export type SettingsReader = () => Promise<Settings>;
+export interface ChoiceAnswer {
+  choice: string;
+  confidence: number;
+  probabilities: Record<string, number>;
+}
+export interface Question {
+  type: "choice";
+  criteria: Record<string, unknown>;
+  instructions: unknown;
+}
+export interface DecisionRequest {
+  model: string;
+  state: unknown;
+  questions: Record<string, Question>;
+}
+export interface ModelCall {
+  model: string;
+  latency_ms: number;
+  usage: Record<string, unknown>;
+}
+export interface Decision extends ModelCall {
+  choice: string;
+  operation: Operation;
+  target: string | null;
+  confidence: number;
+  probabilities: Record<string, number>;
+  operation_probabilities: Record<string, number>;
+  target_probabilities: Record<string, number>;
+  target_confidence: number | null;
+  raw_answers: Record<string, unknown>;
+  request: DecisionRequest;
+}
+export interface HistoryEntry {
+  step: number;
+  action: string;
+  kind: Action["kind"];
+  choice: string;
+  probability: number;
+  confidence: number;
+  latency_ms: number;
+  text: string | null;
+  text_helper: string | null;
+  text_latency_ms: number;
+  operation: Operation;
+  target: string | null;
+  page_changed: boolean | null;
+  url: string;
+  usage: Record<string, unknown>;
+  executed_ms: number;
+  elapsed_ms: number;
+}
+export type Status = "ready" | "predicted" | "done" | "blocked" | "error" | "closed";
+export type CompletionCheck =
+  | { kind: "value"; label: string; equals: string }
+  | { kind: "checked"; label: string; equals: boolean }
+  | { kind: "action"; label: string; action: "click" }
+  | { kind: "title" | "url" | "text"; includes: string };
+export interface TaskStep {
+  instruction: string;
+  checks: CompletionCheck[];
+}
+export interface Checkpoint extends TaskStep {
+  started_at_action: number | null;
+  started_fingerprint: string | null;
+  verified: { fingerprint: string; url: string; action_count: number } | null;
+}
+export interface AgentState {
+  goal: string;
+  page: PageState;
+  decision: Decision | null;
+  history: HistoryEntry[];
+  status: Status;
+  activity: {
+    kind: "observing" | "planning" | "deciding" | "writing" | "acting";
+    started_at: number;
+    action?: Action;
+    text?: string;
+  } | null;
+  plan: string[];
+  plan_index: number;
+  checkpoints: Checkpoint[];
+  planning_calls: ModelCall[];
+  decisions: (Decision & { fingerprint: string; elapsed_ms: number })[];
+  text_calls: (ModelCall & { field: string; value: string })[];
+  elapsed_ms: number;
+  record: boolean;
+}
