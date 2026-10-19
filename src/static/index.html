@@ -87,12 +87,18 @@
           </div>
           <div class="settings-actions">
             <button id="save-settings" type="submit">Save model settings</button>
+            <button id="check-models" type="button">Check saved connections</button>
             <span id="settings-status" role="status"></span>
           </div>
           <p class="muted">
             Keys stay on this computer and are sent only to the configured provider. Leave a key
             blank to retain it. Changing a Base URL clears its old key unless you enter a
             replacement.
+          </p>
+          <ul id="connection-checks" aria-live="polite"></ul>
+          <p class="muted">
+            Connection checks send small test requests to both saved providers. Provider charges may
+            apply.
           </p>
         </form>
       </details>

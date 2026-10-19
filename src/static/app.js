@@ -51,7 +51,15 @@ async function call(name, body = {}) {
 function controls() {
   const working = busy || state?.server_busy;
   const live = state?.page && !stopped();
-  for (const id of ["start", "scenario", "run-mode", "goal", "start-url", "save-settings"])
+  for (const id of [
+    "start",
+    "scenario",
+    "run-mode",
+    "goal",
+    "start-url",
+    "save-settings",
+    "check-models",
+  ])
     $(id).disabled = working;
   $("choose").disabled = working || !live;
   $("execute").disabled = working || !state?.decision || !live;
@@ -544,10 +552,34 @@ $("settings-form").addEventListener("submit", (event) => {
     const settings = await response.json();
     if (!response.ok) throw Error(settings.error || "Could not save settings");
     showSettings(settings);
+    $("connection-checks").replaceChildren();
     $("settings-status").textContent = "Saved · applies to the next request";
     applyState(await fetch("/api/state").then((r) => r.json()));
   }, "Saving model settings…");
 });
+$("check-models").addEventListener("click", () =>
+  perform(async () => {
+    $("settings-status").textContent = "Checking saved connections…";
+    $("connection-checks").replaceChildren();
+    const response = await fetch("/api/preflight", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Demo-Token": token },
+      body: "{}",
+    });
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || "Connection checks failed");
+    $("connection-checks").replaceChildren(
+      ...result.checks.map((check) => {
+        const item = document.createElement("li");
+        item.textContent = `${check.role === "decision" ? "Decision model" : "Chat helper"}: ${check.ok ? "Ready" : check.message} · ${check.model || "No model selected"} · ${check.endpoint} · ${seconds(check.latency_ms)}`;
+        return item;
+      }),
+    );
+    $("settings-status").textContent = result.checks.every((check) => check.ok)
+      ? "Both saved connections are ready"
+      : "Check the failed connection before starting a task";
+  }, "Checking model connections…"),
+);
 fetch("/api/settings")
   .then(async (response) => {
     const settings = await response.json();

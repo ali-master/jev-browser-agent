@@ -2,6 +2,7 @@ import { Agent } from "./agent.js";
 import { Browser } from "./browser.js";
 import { SettingsStore, object } from "./config.js";
 import { MAX_STEPS } from "./questions.js";
+import { checkModels } from "./model.js";
 
 const staticRoot = new URL("./static/", import.meta.url);
 const headers = {
@@ -171,7 +172,14 @@ export function startServer(
         )
           return json({ error: "Local inspector requests only." }, 403);
         if (
-          !["/api/settings", "/api/reset", "/api/predict", "/api/act", "/api/tick"].includes(path)
+          ![
+            "/api/settings",
+            "/api/preflight",
+            "/api/reset",
+            "/api/predict",
+            "/api/act",
+            "/api/tick",
+          ].includes(path)
         )
           return json({ error: "Not found." }, 404);
         if (busy || shuttingDown) return json({ error: "A browser step is already running." }, 409);
@@ -185,6 +193,8 @@ export function startServer(
             return json({ error: "Invalid JSON request." }, 400);
           }
           if (!object(body)) return json({ error: "Expected a JSON object." }, 400);
+          if (path === "/api/preflight")
+            return json({ checks: await checkModels(() => store.read()) });
           if (path === "/api/settings") {
             const settings = await store.save(body);
             if (agent && ["ready", "predicted"].includes(agent.state.status)) {
@@ -206,8 +216,13 @@ export function startServer(
             const config = await store.read();
             if (!config.decision.model)
               throw new Error("Configure the decision model in Model settings first.");
-            await agent?.close();
+            if (!config.text.model)
+              throw new Error(
+                "Configure the chat helper in Model settings first; it creates and verifies the task checklist.",
+              );
+            const previous = agent;
             agent = null;
+            await previous?.close();
             runId = crypto.randomUUID();
             frames.clear();
             latestFrame = null;

@@ -12,6 +12,7 @@ import type {
   ModelObserver,
   Operation,
   PageState,
+  SettingsReader,
   TargetOperation,
 } from "./types.js";
 
@@ -146,6 +147,79 @@ export function validateChoice(answer: unknown, ids: Record<string, unknown>): C
   )
     throw invalid();
   return answer as unknown as ChoiceAnswer;
+}
+
+export async function checkModels(readSettings: SettingsReader) {
+  return Promise.all(
+    (["decision", "text"] as const).map(async (role) => {
+      const started = performance.now();
+      const endpoint = (await readSettings())[role];
+      let message = "Ready",
+        ok = true;
+      try {
+        if (role === "decision") {
+          const criteria = { ready: null, not_ready: null };
+          const result = await postJson(endpoint, "systemone", {
+            model: endpoint.model,
+            state: "Connection check. The expected answer is ready.",
+            questions: { readiness: { type: "choice", instructions: "Choose ready.", criteria } },
+          });
+          if (
+            !object(result.answers) ||
+            validateChoice(result.answers.readiness, criteria).choice !== "ready"
+          )
+            throw new Error(
+              "Expected a valid ready choice from /systemone. Check the decision model and server extension.",
+            );
+        } else {
+          const result = await postJson(endpoint, "chat/completions", {
+            model: endpoint.model,
+            temperature: 0,
+            max_tokens: 32,
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "connection_check",
+                strict: true,
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["ready"],
+                  properties: { ready: { type: "boolean" } },
+                },
+              },
+            },
+            messages: [{ role: "user", content: 'Connection check. Return only {"ready":true}.' }],
+          });
+          const first = Array.isArray(result.choices) ? result.choices[0] : undefined;
+          let value: unknown;
+          try {
+            value =
+              object(first) && object(first.message) && typeof first.message.content === "string"
+                ? JSON.parse(first.message.content)
+                : null;
+          } catch {
+            value = null;
+          }
+          if (!object(value) || value.ready !== true || Object.keys(value).length !== 1)
+            throw new Error(
+              "The chat helper did not return the required JSON schema. Select a chat model with structured output support.",
+            );
+        }
+      } catch (error) {
+        ok = false;
+        message = error instanceof Error ? error.message : "Connection check failed.";
+      }
+      return {
+        role,
+        model: endpoint.model,
+        endpoint: endpoint.baseUrl,
+        ok,
+        message,
+        latency_ms: Math.round(performance.now() - started),
+      };
+    }),
+  );
 }
 
 export function actionSpace(actions: Action[]) {

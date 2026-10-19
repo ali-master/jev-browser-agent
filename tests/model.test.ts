@@ -1,6 +1,7 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import {
   actionSpace,
+  checkModels,
   choose,
   fieldContext,
   fieldText,
@@ -14,6 +15,33 @@ const servers: Bun.Server<undefined>[] = [];
 afterEach(async () => {
   for (const server of servers.splice(0)) await server.stop(true);
 });
+
+test.each(["ready", "invalid", "unauthorized"])(
+  "connection probes validate both real protocols: %s",
+  async (mode) => {
+    const requests: string[] = [];
+    const p = provider(async (request) => {
+      const path = new URL(request.url).pathname;
+      requests.push(path);
+      if (mode === "unauthorized") return new Response("private-provider-message", { status: 401 });
+      if (mode === "invalid") return Response.json({ choices: [] });
+      const body = await request.json();
+      return path.endsWith("systemone")
+        ? Response.json({
+            answers: { readiness: choice(body.questions.readiness.criteria, "ready") },
+          })
+        : chatResponse({ ready: true });
+    });
+    servers.push(p.server);
+    const results = await checkModels(async () => p.settings);
+    expect(results.map((check) => check.ok)).toEqual([mode === "ready", mode === "ready"]);
+    expect(requests.sort()).toEqual(["/v1/chat/completions", "/v1/systemone"]);
+    expect(JSON.stringify(results)).not.toContain("test-key");
+    expect(JSON.stringify(results)).not.toContain("private-provider-message");
+    if (mode === "unauthorized")
+      expect(results.every((check) => check.message.includes("401"))).toBe(true);
+  },
+);
 
 test.each(["unknown", "nan", "missing", "negative", "non_max", "confidence", "extra", "boolean"])(
   "rejects malformed choice: %s",

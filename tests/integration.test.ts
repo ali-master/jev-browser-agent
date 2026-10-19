@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -9,6 +9,7 @@ import { SettingsStore } from "../src/config.js";
 import { startServer } from "../src/server.js";
 import {
   chatResponse,
+  choice,
   completionResponse,
   decisionResponse,
   fixture,
@@ -41,6 +42,8 @@ function mockModels(beforeDecision?: () => Promise<void>) {
   const model = provider(async (request) => {
     if (new URL(request.url).pathname.endsWith("chat/completions")) {
       const body = await request.json();
+      if (body.response_format?.json_schema?.name === "connection_check")
+        return chatResponse({ ready: true });
       if (body.response_format?.json_schema?.name === "completion_review") {
         counts.verification++;
         return completionResponse(body);
@@ -76,9 +79,13 @@ function mockModels(beforeDecision?: () => Promise<void>) {
       counts.text++;
       return chatResponse({ text: "Lisbon" });
     }
+    const body = (await request.json()) as DecisionRequest;
+    if (body.questions.readiness)
+      return Response.json({
+        answers: { readiness: choice(body.questions.readiness.criteria, "ready") },
+      });
     counts.decisions++;
     await beforeDecision?.();
-    const body = (await request.json()) as DecisionRequest;
     const state = body.state as { elements: ElementView[]; page: { text: string } };
     const city = state.elements.find((element) => element.label === "City")!;
     const category = state.elements.find((element) => element.label === "Category");
@@ -168,6 +175,14 @@ test("inspector saves private settings and drives a complete task through its co
   const publicSettings = await (await fetch(`${inspector.url}/api/settings`)).text();
   expect(publicSettings).not.toContain("private-test-key");
   expect((await store.read()).decision.apiKey).toBe("private-test-key");
+  await page.getByRole("button", { name: "Check saved connections" }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#settings-status")?.textContent ===
+      "Both saved connections are ready",
+  );
+  expect(await page.locator("#connection-checks li").count()).toBe(2);
+  expect(await page.locator("#connection-checks").textContent()).not.toContain("private-test-key");
   await page.locator("#scenario").selectOption("custom");
   await page.locator("#start-url").fill(url);
   await page.locator("#goal").fill("Search for Design hotels in Lisbon");
@@ -319,4 +334,55 @@ test("inspector rejects foreign origins, hosts, missing tokens, malformed JSON a
       .status,
   ).toBe(403);
   expect((await fetch(`${inspector.url}/api/frames/unknown/0.jpg`)).status).toBe(404);
+});
+
+test("inspector reports a dead browser and can start a fresh task", async () => {
+  const models = mockModels();
+  const store = new SettingsStore(await temporary(), {});
+  await store.save(models.settings);
+  const inspector = startServer({ port: 0, settings: store });
+  cleanup.push(() => inspector.close());
+  const html = await (await fetch(inspector.url)).text();
+  const token = html.match(/name="demo-token" content="([^"]+)"/)![1]!;
+  const post = (path: string, body: unknown = {}) =>
+    fetch(`${inspector.url}/api/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Demo-Token": token },
+      body: JSON.stringify(body),
+    });
+  const create = Agent.create;
+  let active: Agent | undefined;
+  const capture = spyOn(Agent, "create").mockImplementation(
+    async (...args) => (active = await create(...args)),
+  );
+  cleanup.push(() => capture.mockRestore());
+  const request = { url: localSite(), goal: "Search for Design hotels in Lisbon" };
+  const first = await (await post("reset", request)).json();
+  expect(first.status).toBe("ready");
+  await (active!.browser as unknown as { browser: import("playwright").Browser }).browser.close();
+  const disconnected = await post("predict");
+  expect(disconnected.status).toBe(400);
+  expect((await disconnected.json()).error).toContain("Browser disconnected");
+  const restarted = await (await post("reset", request)).json();
+  expect(restarted.status).toBe("ready");
+  expect(restarted.run_id).not.toBe(first.run_id);
+  expect(restarted.error).toBeNull();
+  expect((await post("predict")).status).toBe(200);
+});
+
+test("start rejects a missing chat helper before opening a browser", async () => {
+  const store = new SettingsStore(await temporary(), {});
+  await store.save({ decision: { model: "decision-model" } });
+  const inspector = startServer({ port: 0, settings: store });
+  cleanup.push(() => inspector.close());
+  const html = await (await fetch(inspector.url)).text();
+  const token = html.match(/name="demo-token" content="([^"]+)"/)![1]!;
+  const response = await fetch(`${inspector.url}/api/reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Demo-Token": token },
+    body: JSON.stringify({ scenario: "travel", goal: "Find a stay" }),
+  });
+  expect(response.status).toBe(400);
+  expect((await response.json()).error).toContain("chat helper");
+  expect((await (await fetch(`${inspector.url}/api/state`)).json()).status).toBe("idle");
 });
