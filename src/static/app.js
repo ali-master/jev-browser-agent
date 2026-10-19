@@ -153,7 +153,8 @@ function presentation() {
     return [
       "NEEDS ATTENTION",
       "The agent stopped here",
-      "It could not find a supported action. Review the last result and adjust the task.",
+      state.stop_reason?.message ||
+        "It could not find a supported action. Review the last result and adjust the task.",
       "!",
     ];
   if (state?.status === "error" || state?.error)

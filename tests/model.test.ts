@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import {
   actionSpace,
   choose,
@@ -7,8 +7,8 @@ import {
   postJson,
   validateChoice,
 } from "../src/model.js";
-import { choice, decisionResponse, page, provider } from "./helpers.js";
-import type { DecisionRequest } from "../src/types.js";
+import { chatResponse, choice, decisionResponse, page, provider } from "./helpers.js";
+import type { DecisionRequest, ModelCall } from "../src/types.js";
 
 const servers: Bun.Server<undefined>[] = [];
 afterEach(async () => {
@@ -129,7 +129,6 @@ test("an unfinished checkpoint gets focused instructions and no terminal DONE ch
 
 test.each([
   ["non-JSON", "Thinking: Lisbon"],
-  ["missing value", '{"text":null}'],
   ["extra keys", '{"text":"Lisbon","extra":true}'],
   ["wrong type", '{"text":123}'],
   ["empty text", '{"text":" "}'],
@@ -179,4 +178,116 @@ test("HTTP errors redact provider bodies and authenticated redirects are refused
   await expect(postJson(first.endpoint, "error", {})).rejects.toThrow("HTTP 401");
   await expect(postJson(first.endpoint, "redirect", {})).rejects.toThrow("connection failed");
   expect(forwarded).toBe(0);
+});
+
+test("null is a valid missing-value result and is not repaired", async () => {
+  let calls = 0;
+  const p = provider(async (request) => {
+    calls++;
+    const body = await request.json();
+    expect(body.response_format.json_schema.schema.properties.text.type).toEqual([
+      "string",
+      "null",
+    ]);
+    return chatResponse({ text: null });
+  });
+  servers.push(p.server);
+  const state = page();
+  expect(
+    (
+      await fieldText(
+        fieldContext("Enter an unspecified name", state.actions[0]!, state, []),
+        p.endpoint,
+      )
+    ).text,
+  ).toBeNull();
+  expect(calls).toBe(1);
+});
+
+test("helper repairs once, preserves its field context and rereads the connection", async () => {
+  const requests: any[] = [],
+    calls: ModelCall[] = [];
+  let reads = 0;
+  const p = provider(async (request) => {
+    requests.push(await request.json());
+    return requests.length === 1
+      ? Response.json({
+          choices: [{ message: { content: "{broken" } }],
+          usage: { prompt_tokens: 3 },
+        })
+      : chatResponse({ text: "Lisbon" });
+  });
+  servers.push(p.server);
+  const state = page();
+  const result = await fieldText(
+    fieldContext("Enter Lisbon", state.actions[0]!, state, []),
+    async () => {
+      reads++;
+      return p.endpoint;
+    },
+    (call) => calls.push(call),
+  );
+  expect(result.text).toBe("Lisbon");
+  expect(reads).toBe(2);
+  expect(requests[0].messages[1]).toEqual(requests[1].messages[1]);
+  expect(requests[1].messages).toHaveLength(3);
+  expect(calls).toHaveLength(2);
+  expect(calls[0]!.usage).toEqual({ prompt_tokens: 3 });
+});
+
+test.each(["http", "envelope"])(
+  "retries transient %s errors and records every attempt",
+  async (kind) => {
+    let requests = 0;
+    const calls: ModelCall[] = [];
+    const p = provider(() =>
+      ++requests < 3
+        ? kind === "http"
+          ? new Response("sensitive body", { status: 503 })
+          : Response.json({ error: { code: "overloaded", message: "sensitive body" } })
+        : Response.json({ ok: true, usage: { input_tokens: 5, output_tokens: 2 } }),
+    );
+    servers.push(p.server);
+    expect((await postJson(p.endpoint, "systemone", {}, (call) => calls.push(call))).ok).toBe(true);
+    expect(calls).toHaveLength(3);
+    expect(calls[0]!.outcome).toBe(kind === "http" ? "http_error" : "provider_error");
+    expect(JSON.stringify(calls)).not.toContain("sensitive body");
+    expect(JSON.stringify(calls)).not.toContain("test-key");
+  },
+);
+
+test("permanent HTTP-200 errors fail once without leaking provider details", async () => {
+  let count = 0;
+  const p = provider(() => {
+    count++;
+    return Response.json({ error: { code: "invalid_api_key", message: "secret-key" } });
+  });
+  servers.push(p.server);
+  await expect(postJson(p.endpoint, "systemone", {})).rejects.toThrow("error response");
+  expect(count).toBe(1);
+});
+
+test("network failures retry within a fixed request budget", async () => {
+  const fetch = spyOn(globalThis, "fetch").mockRejectedValue(
+    new TypeError("secret connection detail"),
+  );
+  const calls: ModelCall[] = [];
+  try {
+    await expect(
+      postJson(
+        { baseUrl: "http://127.0.0.1:1/v1", model: "test", apiKey: "" },
+        "systemone",
+        {},
+        (call) => calls.push(call),
+      ),
+    ).rejects.toThrow("connection failed");
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(calls.map((c) => c.outcome)).toEqual([
+      "network_error",
+      "network_error",
+      "network_error",
+    ]);
+  } finally {
+    fetch.mockRestore();
+  }
 });

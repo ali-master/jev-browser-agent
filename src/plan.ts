@@ -6,6 +6,7 @@ import type {
   Endpoint,
   HistoryEntry,
   ModelCall,
+  ModelObserver,
   PageState,
   TaskStep,
 } from "./types.js";
@@ -213,35 +214,41 @@ export async function createPlan(
   goal: string,
   readEndpoint: () => Promise<Endpoint>,
   calls: ModelCall[] = [],
+  observe?: ModelObserver,
 ) {
   let correction = "";
   let previous = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const endpoint = await readEndpoint();
     const started = performance.now();
-    const result = await postJson(endpoint, "chat/completions", {
-      model: endpoint.model,
-      max_tokens: 2500,
-      temperature: 0,
-      response_format: PLAN_FORMAT,
-      messages: [
-        { role: "system", content: PLAN },
-        {
-          role: "user",
-          content: JSON.stringify({
-            goal,
-            page: { url: page.url, title: page.title, text: page.text },
-            elements: actionSpace(page.actions).elements,
-          }),
-        },
-        ...(correction
-          ? [
-              { role: "assistant", content: previous },
-              { role: "user", content: correction },
-            ]
-          : []),
-      ],
-    });
+    const result = await postJson(
+      endpoint,
+      "chat/completions",
+      {
+        model: endpoint.model,
+        max_tokens: 2500,
+        temperature: 0,
+        response_format: PLAN_FORMAT,
+        messages: [
+          { role: "system", content: PLAN },
+          {
+            role: "user",
+            content: JSON.stringify({
+              goal,
+              page: { url: page.url, title: page.title, text: page.text },
+              elements: actionSpace(page.actions).elements,
+            }),
+          },
+          ...(correction
+            ? [
+                { role: "assistant", content: previous },
+                { role: "user", content: correction },
+              ]
+            : []),
+        ],
+      },
+      observe,
+    );
     calls.push({
       model: endpoint.model,
       latency_ms: Math.round(performance.now() - started),

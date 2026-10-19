@@ -9,53 +9,115 @@ import type {
   Endpoint,
   HistoryEntry,
   ModelCall,
+  ModelObserver,
   Operation,
   PageState,
   TargetOperation,
 } from "./types.js";
 
+class ProviderFailure extends Error {
+  constructor(
+    message: string,
+    readonly retryable = false,
+  ) {
+    super(message);
+  }
+}
+const transientStatus = (status: number) =>
+  [408, 425, 429, 500, 502, 503, 504, 529].includes(status);
+
 export async function postJson(
   endpoint: Endpoint,
   path: string,
   body: unknown,
+  observe?: ModelObserver,
 ): Promise<Record<string, unknown>> {
   if (!endpoint.model)
     throw new Error("Set the model identifier in Settings or .env before running.");
   for (let attempt = 0; attempt < 3; attempt++) {
-    let response: Response;
-    try {
-      response = await fetch(`${endpoint.baseUrl}/${path}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(endpoint.apiKey ? { Authorization: `Bearer ${endpoint.apiKey}` } : {}),
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(60_000),
-        redirect: "error",
-      });
-    } catch {
-      throw new Error("Model connection failed or timed out; no browser action executed.");
-    }
-    if ([429, 503, 529].includes(response.status) && attempt < 2) {
-      await response.body?.cancel();
-      await Bun.sleep(500 * 2 ** attempt);
-      continue;
-    }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new Error(
-        `Model provider returned HTTP ${response.status}; no browser action executed.`,
-      );
-    }
+    const started = performance.now();
+    let response: Response | undefined;
     let result: unknown;
+    let outcome: ModelCall["outcome"] = "network_error";
     try {
-      result = await response.json();
-    } catch {
-      throw new Error("Model provider returned invalid JSON.");
+      try {
+        response = await fetch(`${endpoint.baseUrl}/${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(endpoint.apiKey ? { Authorization: `Bearer ${endpoint.apiKey}` } : {}),
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(60_000),
+          redirect: "manual",
+        });
+      } catch {
+        throw new ProviderFailure(
+          "Model connection failed or timed out; no browser action executed.",
+          true,
+        );
+      }
+      outcome = "http_error";
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel();
+        throw new ProviderFailure(
+          "Model connection failed: redirects are not allowed; no browser action executed.",
+        );
+      }
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new ProviderFailure(
+          `Model provider returned HTTP ${response.status}; no browser action executed.`,
+          transientStatus(response.status),
+        );
+      }
+      outcome = "invalid_response";
+      try {
+        result = await response.json();
+      } catch {
+        throw new ProviderFailure("Model provider returned invalid JSON.", true);
+      }
+      if (!object(result))
+        throw new ProviderFailure("Model provider returned an invalid response.", true);
+      if (result.error !== undefined && result.error !== null) {
+        outcome = "provider_error";
+        const error = object(result.error) ? result.error : {};
+        const retryable =
+          transientStatus(Number(error.status ?? error.code)) ||
+          [
+            "rate_limit_exceeded",
+            "rate_limit_error",
+            "overloaded",
+            "overloaded_error",
+            "server_error",
+            "internal_server_error",
+            "temporarily_unavailable",
+            "service_unavailable",
+          ].includes(String(error.code ?? error.type));
+        throw new ProviderFailure(
+          "Model provider returned an error response; no browser action executed.",
+          retryable,
+        );
+      }
+      outcome = "response";
+      return result;
+    } catch (error) {
+      if (!(error instanceof ProviderFailure) || !error.retryable || attempt === 2) throw error;
+    } finally {
+      try {
+        observe?.({
+          model: object(result) && typeof result.model === "string" ? result.model : endpoint.model,
+          endpoint: new URL(endpoint.baseUrl).origin,
+          latency_ms: Math.round(performance.now() - started),
+          usage: object(result) && object(result.usage) ? result.usage : {},
+          outcome,
+          http_status: response?.status,
+        });
+      } catch {
+        /* Telemetry cannot change request execution. */
+      }
     }
-    if (!object(result)) throw new Error("Model provider returned an invalid response.");
-    return result;
+    await Bun.sleep(250 * 2 ** attempt);
   }
   throw new Error("Model unavailable.");
 }
@@ -139,6 +201,7 @@ export async function choose(
   history: HistoryEntry[],
   endpoint: Endpoint,
   allowDone = true,
+  observe?: ModelObserver,
 ): Promise<Decision> {
   const { elements, targets, controls } = actionSpace(page.actions);
   const labels = {
@@ -201,7 +264,7 @@ export async function choose(
     };
   }
   const started = performance.now();
-  const result = await postJson(endpoint, "systemone", request);
+  const result = await postJson(endpoint, "systemone", request, observe);
   if (!object(result.answers)) throw new Error("Decision provider did not return typed answers.");
   const answer = validateChoice(result.answers.operation, operations);
   const operation = answer.choice as Operation;
@@ -272,53 +335,73 @@ export function fieldContext(
 
 export async function fieldText(
   context: ReturnType<typeof fieldContext>,
-  endpoint: Endpoint,
-): Promise<{ text: string; helper: ModelCall }> {
+  connection: Endpoint | (() => Promise<Endpoint>),
+  observe?: ModelObserver,
+): Promise<{ text: string | null; helper: ModelCall }> {
   const started = performance.now();
-  const result = await postJson(endpoint, "chat/completions", {
-    model: endpoint.model,
-    max_tokens: 1024,
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "field_value",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: { text: { type: "string" } },
-          required: ["text"],
-          additionalProperties: false,
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const endpoint = typeof connection === "function" ? await connection() : connection;
+    const result = await postJson(
+      endpoint,
+      "chat/completions",
+      {
+        model: endpoint.model,
+        max_tokens: 1024,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "field_value",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: { text: { type: ["string", "null"] } },
+              required: ["text"],
+              additionalProperties: false,
+            },
+          },
         },
+        messages: [
+          { role: "system", content: TEXT_VALUE },
+          { role: "user", content: JSON.stringify(context) },
+          ...(attempt
+            ? [
+                {
+                  role: "user",
+                  content:
+                    "The previous response did not match the field_value schema. Return only that JSON object. Use text:null when the required value is unknown.",
+                },
+              ]
+            : []),
+        ],
       },
-    },
-    messages: [
-      { role: "system", content: TEXT_VALUE },
-      { role: "user", content: JSON.stringify(context) },
-    ],
-  });
-  let output: unknown;
-  try {
-    const first = Array.isArray(result.choices) ? result.choices[0] : undefined;
-    if (!object(first) || !object(first.message) || typeof first.message.content !== "string")
-      throw new Error();
-    output = JSON.parse(first.message.content);
-  } catch {
-    throw new Error("Text helper returned no valid field value; nothing typed.");
+      observe,
+    );
+    let output: unknown;
+    try {
+      const first = Array.isArray(result.choices) ? result.choices[0] : undefined;
+      if (!object(first) || !object(first.message) || typeof first.message.content !== "string")
+        throw new Error();
+      output = JSON.parse(first.message.content);
+    } catch {
+      continue;
+    }
+    if (
+      !object(output) ||
+      Object.keys(output).length !== 1 ||
+      (output.text !== null &&
+        (typeof output.text !== "string" || !output.text.trim() || output.text.length > 2000))
+    )
+      continue;
+    return {
+      text: output.text,
+      helper: {
+        model: endpoint.model,
+        latency_ms: Math.round(performance.now() - started),
+        usage: object(result.usage) ? result.usage : {},
+      },
+    };
   }
-  if (
-    !object(output) ||
-    Object.keys(output).length !== 1 ||
-    typeof output.text !== "string" ||
-    !output.text.trim() ||
-    output.text.length > 2000
-  )
-    throw new Error("Text helper returned no valid field value; nothing typed.");
-  return {
-    text: output.text,
-    helper: {
-      model: endpoint.model,
-      latency_ms: Math.round(performance.now() - started),
-      usage: object(result.usage) ? result.usage : {},
-    },
-  };
+  throw new Error(
+    "Text helper returned no valid field value after a repair attempt; nothing typed.",
+  );
 }

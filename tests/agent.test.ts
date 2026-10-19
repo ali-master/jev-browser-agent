@@ -197,3 +197,33 @@ test("concurrent callers cannot execute overlapping steps", async () => {
   await first;
   expect(agent.state.decisions).toHaveLength(1);
 });
+
+test("a missing required field value blocks clearly without typing or retrying", async () => {
+  const p = provider(async (request) => {
+    const body = await request.json();
+    if (new URL(request.url).pathname.endsWith("systemone"))
+      return Response.json(decisionResponse(body));
+    return body.messages[0].content.includes("completion checklist")
+      ? chatResponse({
+          steps: [
+            {
+              instruction: "Enter name",
+              checks: [{ kind: "value", label: "Search", equals: "unknown" }],
+            },
+          ],
+        })
+      : chatResponse({ text: null });
+  });
+  servers.push(p.server);
+  const { driver } = runner();
+  const agent = new Agent(driver, page(), "Enter the missing name", {
+    settings: async () => p.settings,
+  });
+  await agent.command("tick");
+  expect(agent.state.status).toBe("blocked");
+  expect(agent.state.stop_reason?.code).toBe("missing_value");
+  expect(agent.state.text_calls).toHaveLength(1);
+  expect(agent.state.model_calls.filter((c) => c.role === "text")).toHaveLength(1);
+  expect(driver.act).not.toHaveBeenCalled();
+  expect(agent.state.history).toHaveLength(0);
+});

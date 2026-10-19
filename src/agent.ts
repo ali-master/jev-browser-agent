@@ -6,7 +6,7 @@ import { SettingsStore } from "./config.js";
 import { actionSpace, choose, fieldContext, fieldText } from "./model.js";
 import { MAX_STEPS } from "./questions.js";
 import { createPlan, updateProgress } from "./plan.js";
-import type { Action, AgentState, ModelCall, SettingsReader } from "./types.js";
+import type { Action, AgentState, ModelCall, ModelRole, SettingsReader } from "./types.js";
 
 export interface AgentOptions extends BrowserOptions {
   screenshots?: boolean;
@@ -50,6 +50,7 @@ export class Agent {
       planning_calls: [],
       decisions: [],
       text_calls: [],
+      model_calls: [],
       elapsed_ms: 0,
       record: Boolean(options.recordDir),
     };
@@ -82,6 +83,11 @@ export class Agent {
   }
   private elapsed() {
     return Math.round(performance.now() - (this.startedAt ?? performance.now()));
+  }
+  private modelObserver(role: ModelRole) {
+    return (call: ModelCall) => {
+      this.state.model_calls.push({ ...call, role });
+    };
   }
   private notify() {
     this.state.elapsed_ms = this.elapsed();
@@ -146,6 +152,7 @@ export class Agent {
         state.goal,
         async () => (await this.settings()).text,
         state.planning_calls,
+        this.modelObserver("planning"),
       );
       state.plan = steps.map((step) => step.instruction);
       state.checkpoints = steps.map((step) => ({
@@ -169,6 +176,7 @@ export class Agent {
       state.history,
       config.decision,
       false,
+      this.modelObserver("decision"),
     );
     state.decisions.push({
       ...state.decision,
@@ -227,9 +235,24 @@ export class Agent {
       if (this.pendingText?.key === key) ({ text, helper } = this.pendingText);
       else {
         this.activity("writing", action);
-        ({ text, helper } = await fieldText(context, config));
+        const result = await fieldText(
+          context,
+          async () => (await this.settings()).text,
+          this.modelObserver("text"),
+        );
+        helper = result.helper;
+        state.text_calls.push({ ...helper, field: action.label, value: result.text });
+        if (result.text === null) {
+          state.status = "blocked";
+          state.stop_reason = {
+            code: "missing_value",
+            message: `A required value for “${action.label}” is missing. Add it to the task and start again; nothing was typed.`,
+          };
+          this.pendingText = null;
+          return;
+        }
+        text = result.text;
         this.pendingText = { key, text, helper };
-        state.text_calls.push({ ...helper, field: action.label, value: text });
       }
     }
     this.activity("acting", action, text);

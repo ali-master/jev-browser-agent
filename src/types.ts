@@ -89,7 +89,12 @@ export interface ModelCall {
   model: string;
   latency_ms: number;
   usage: Record<string, unknown>;
+  endpoint?: string;
+  outcome?: "response" | "network_error" | "http_error" | "provider_error" | "invalid_response";
+  http_status?: number;
 }
+export type ModelRole = "decision" | "text" | "planning" | "verification";
+export type ModelObserver = (call: ModelCall) => void;
 export interface Decision extends ModelCall {
   choice: string;
   operation: Operation;
@@ -160,7 +165,9 @@ export interface AgentState {
   checkpoints: Checkpoint[];
   planning_calls: ModelCall[];
   decisions: (Decision & { fingerprint: string; elapsed_ms: number })[];
-  text_calls: (ModelCall & { field: string; value: string })[];
+  text_calls: (ModelCall & { field: string; value: string | null })[];
+  model_calls: (ModelCall & { role: ModelRole })[];
+  stop_reason?: { code: string; message: string };
   elapsed_ms: number;
   record: boolean;
 }
