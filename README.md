@@ -126,10 +126,17 @@ API compatibility is separate from planning quality. A chat model can return val
 
 ## Use the library
 
-Save this example in the repository root and run it with Bun:
+Install `@usex/jev-browser-agent` in your Bun project, then install Chromium:
+
+```sh
+bun add @usex/jev-browser-agent
+bunx --bun --no-install playwright install chromium
+```
+
+Add both model connections to a `.env` file in your application's working directory as shown in [Connect your models](#connect-your-models). Save the following as `agent.ts`:
 
 ```ts
-import { Agent } from "./src/index.ts";
+import { Agent } from "@usex/jev-browser-agent";
 
 await using agent = await Agent.create(
   "https://en.wikipedia.org/wiki/Main_Page",
@@ -145,18 +152,32 @@ console.log(agent.state.answer);
 console.log(agent.snapshot().usage);
 ```
 
-`Agent.create` reads the same model settings as the inspector. `await using` closes the owned browser context when execution leaves the scope. Library callers can provide a `settings` callback, `cdpUrl`, `maxSteps`, or `recordDir` through the third argument.
-
-The same loop is available from the CLI:
+Run it from your application directory:
 
 ```sh
-bun run agent \
+bun run agent.ts
+```
+
+`Agent.create` reads the same model settings as the inspector. `await using` closes the owned browser context when execution leaves the scope. Library callers can provide a `settings` callback, `cdpUrl`, `maxSteps`, or `recordDir` through the third argument.
+
+The package also includes the `jev` CLI:
+
+```sh
+bunx --bun --no-install jev run \
   --url https://en.wikipedia.org/wiki/Main_Page \
   --goal 'Find and open the article about Gödel’s incompleteness theorems.' \
   --headed --max-steps 20 --record artifacts/research
 ```
 
-Omit `--headed` to run headlessly. `--record` saves state and screenshots for inspection. `BROWSER_CDP_URL` connects the CLI and inspector to an existing Chromium CDP endpoint, while still creating a separate context; it does not use your signed-in profile. Set `PORT` or run `bun start serve --port 8767` to change the inspector port.
+Omit `--headed` to run headlessly. `--record` saves state and screenshots for inspection. `BROWSER_CDP_URL` connects the CLI and inspector to an existing Chromium CDP endpoint, while still creating a separate context; it does not use your signed-in profile.
+
+To open the inspector from your project:
+
+```sh
+bunx --bun --no-install jev serve --port 8766
+```
+
+Use `--port` or the `PORT` environment variable to change its port.
 
 ## Why it moves
 
