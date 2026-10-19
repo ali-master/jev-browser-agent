@@ -1,22 +1,52 @@
-# source
-src
-index.ts
-package-lock.json
-tslint.json
-tsconfig.json
-.prettierrc
+# package.json#files selects the published runtime files.
 
-# misc
-.commitlintrc.json
-.release-it.json
-.eslintignore
-.eslintrc.js
+# Development source, tests, documentation and artwork
+/src/
+/tests/
+/scripts/
+/examples/
+/docs/
+/assets/
 
-.idea
-.vscode
-# test
-jest.config.js
-# coverage
-coverage
-# docs
-docs
+# Local settings, credentials and browser recordings
+.env*
+/.npmrc
+/.jev/
+/artifacts/
+/test-results/
+/playwright-report/
+
+# Dependencies and generated diagnostics
+/node_modules/
+/venv/
+/.venv/
+__pycache__/
+/coverage/
+/.nyc_output/
+*.log
+*.tsbuildinfo
+*.tgz
+
+# Build, formatting and release configuration
+/bun.lock
+/bun.lockb
+/bunfig.toml
+/package-lock.json
+/pnpm-lock.yaml
+/yarn.lock
+/tsconfig*.json
+/.prettier*
+/.release-it.json
+
+# Repository, editor and agent tooling
+/.github/
+/.gitignore
+/.npmignore
+/.idea/
+/.vscode/
+/.awcache/
+/.claude/
+/.codebase-memory/
+/AGENTS.md
+/RTK.md
+.DS_Store
