@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
 import { Browser, StalePage, fingerprint } from "../src/browser.js";
 import { fixture, page } from "./helpers.js";
+import { fieldContext } from "../src/model.js";
 
 let server: Bun.Server<undefined>;
 let browser: Browser;
@@ -211,4 +212,19 @@ test.each([
     `(()=>{const s=document.querySelector('select');${mutation};return true})()`,
   );
   await expect(browser.act(action, state)).rejects.toBeInstanceOf(StalePage);
+});
+
+test("same-labeled fields expose distinct document identities and bounded form context", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<fieldset><legend>Sender</legend><label>Name<input id="sender" name="sender"></label></fieldset><fieldset><legend>Recipient</legend><label>Name<input id="recipient" name="recipient"></label></fieldset>';true`,
+  );
+  const state = await browser.observe();
+  const fields = state.actions.filter((a) => a.kind === "fill");
+  expect(fields).toHaveLength(2);
+  const contexts = fields.map((a) => fieldContext("Sender Alice, recipient Bob", a, state, []));
+  expect(contexts[0]!.field.ref).not.toBe(contexts[1]!.field.ref);
+  expect(contexts.map((c) => c.field.scope)).toEqual(["Sender", "Recipient"]);
+  expect(contexts[1]!.field.html_id).toBe("recipient");
+  expect(contexts[1]!.field.context).toContain("Recipient");
+  expect(contexts[1]!.field.context.length).toBeLessThanOrEqual(600);
 });

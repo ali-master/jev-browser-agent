@@ -65,6 +65,29 @@
   const selector =
     'a[href],button,input,textarea,select,summary,[contenteditable="true"],' +
     roles.map((role) => '[role="' + role + '"]').join(",");
+  const document_id = String(performance.timeOrigin);
+  const scopeSelector =
+    'fieldset,form,[role="form"],dialog,[role="dialog"],article,li,tr,[role="row"]';
+  const fieldScope = (e) => {
+    const labels = [];
+    let container = e.parentElement?.closest(scopeSelector);
+    const context = container?.innerText?.trim().slice(0, 600) || "";
+    for (
+      let depth = 0;
+      container && depth < 3;
+      depth++, container = container.parentElement?.closest(scopeSelector)
+    ) {
+      const heading = container.querySelector(
+        ':scope > legend,:scope > caption,:scope > [role="rowheader"],:scope > th,:scope > h1,:scope > h2,:scope > h3',
+      );
+      const label =
+        container.hasAttribute("aria-label") || container.hasAttribute("aria-labelledby")
+          ? name(container)
+          : name(heading) || container.getAttribute("name") || container.id;
+      if (label) labels.unshift(label.trim().slice(0, 120));
+    }
+    return { scope: labels.join(" / "), context };
+  };
   const role = (e) => {
     const explicit = e.getAttribute("role");
     if (roles.includes(explicit)) return explicit;
@@ -94,8 +117,7 @@
   ];
   cache.guard = (e) => {
     if (!e?.isConnected || !visible(e)) return null;
-    const scope =
-      e.closest('form,dialog,[role="dialog"],article,li,tr,[role="row"]') || e.parentElement;
+    const scope = e.closest(scopeSelector) || e.parentElement;
     return [
       identity(e),
       role(e),
@@ -111,6 +133,7 @@
       e.getAttribute("aria-selected"),
       e.getAttribute("href"),
       scope?.innerText?.slice(0, 6000) || "",
+      fieldScope(e),
       e.tagName === "SELECT"
         ? [...e.options].map((o) => [
             identity(o),
@@ -143,6 +166,10 @@
     if (rname === "gridcell" && e.querySelector('button,[role="button"]')) continue;
     const base = {
       node: identity(e),
+      ref: `${document_id}:${identity(e)}`,
+      ...fieldScope(e),
+      html_id: e.id,
+      html_name: e.getAttribute("name") || "",
       role: rname,
       label: name(e) || rname,
       rect: { x: r.x, y: r.y, w: r.width, h: r.height },
@@ -233,6 +260,7 @@
     actions.push({ id: "scroll_up", kind: "scroll", label: "Scroll up", delta: -560 });
   actions.push({ id: "wait", kind: "wait", label: "Wait for the page to update" });
   return {
+    document_id,
     url: location.href,
     title: document.title,
     w: innerWidth,

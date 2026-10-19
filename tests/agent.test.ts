@@ -81,7 +81,7 @@ test("publishes execution stages without letting viewer failures retry browser a
   expect(agent.state.history).toHaveLength(1);
 });
 
-test.each(["identical", "page", "provider"])(
+test.each(["identical", "page", "provider", "node", "document", "url"])(
   "stale text cache respects entire context and provider: %s",
   async (change) => {
     const { agent, driver, settings, textCalls } = runner();
@@ -90,6 +90,9 @@ test.each(["identical", "page", "provider"])(
     expect(agent.state.history).toHaveLength(0);
     if (change === "page") agent.state.page.text = "A different field context";
     if (change === "provider") settings.text.apiKey = "changed-local-key";
+    if (change === "node") Object.assign(agent.state.page.actions[0]!, { node: 90 });
+    if (change === "document") agent.state.page.document_id = "new-document";
+    if (change === "url") agent.state.page.url = "https://example.test/other";
     await agent.command("tick");
     expect(textCalls()).toBe(change === "identical" ? 1 : 2);
     expect(agent.state.history).toHaveLength(1);

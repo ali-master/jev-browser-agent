@@ -6,6 +6,11 @@ interface Target {
   node: number;
   label: string;
   role: string;
+  ref?: string;
+  scope?: string;
+  context?: string;
+  html_id?: string;
+  html_name?: string;
   value?: string;
   current_value?: string;
   checked?: string;
@@ -20,6 +25,7 @@ export type Action =
   | { id: string; kind: "wait"; label: string };
 
 export interface PageState {
+  document_id: string;
   url: string;
   title: string;
   text: string;
@@ -39,6 +45,9 @@ export interface ElementView {
   index: string;
   label: string;
   role: string;
+  ref?: string;
+  scope?: string;
+  context?: string;
   value?: string;
   checked?: string;
   selected?: string;
@@ -91,6 +100,8 @@ export interface Decision extends ModelCall {
 export interface HistoryEntry {
   step: number;
   action: string;
+  ref?: string;
+  scope?: string;
   kind: Action["kind"];
   choice: string;
   probability: number;
@@ -108,10 +119,15 @@ export interface HistoryEntry {
   elapsed_ms: number;
 }
 export type Status = "ready" | "predicted" | "done" | "blocked" | "error" | "closed";
+interface ControlCheck {
+  label: string;
+  ref?: string | null;
+  scope?: string | null;
+}
 export type CompletionCheck =
-  | { kind: "value"; label: string; equals: string }
-  | { kind: "checked"; label: string; equals: boolean }
-  | { kind: "action"; label: string; action: "click" }
+  | (ControlCheck & { kind: "value"; equals: string })
+  | (ControlCheck & { kind: "checked"; equals: boolean })
+  | (ControlCheck & { kind: "action"; action: "click" })
   | { kind: "title" | "url" | "text"; includes: string };
 export interface TaskStep {
   instruction: string;

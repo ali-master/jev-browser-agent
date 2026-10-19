@@ -3,6 +3,7 @@ import type { ChoiceAnswer, DecisionRequest, Endpoint, PageState, Settings } fro
 
 export function page(): PageState {
   const state: PageState = {
+    document_id: "fixture-document",
     url: "https://example.test/",
     title: "Search",
     text: "Search",

@@ -205,6 +205,51 @@ test("ambiguous duplicate field labels cannot produce completion evidence", () =
   expect(updateProgress(steps, state, [])).toBe(0);
 });
 
+test("scoped control checks verify only their field and invalidate replaced same-document nodes", () => {
+  const state = page();
+  Object.assign(state.actions[0]!, {
+    label: "Name",
+    ref: "fixture-document:10",
+    scope: "Sender",
+    value: "Alice",
+  });
+  state.actions.push({
+    id: "e4",
+    node: 30,
+    kind: "fill",
+    label: "Name",
+    role: "textbox",
+    ref: "fixture-document:30",
+    scope: "Recipient",
+    value: "Alice",
+  });
+  const steps = checkpoints(
+    [
+      {
+        kind: "value",
+        label: "Name",
+        scope: "Sender",
+        ref: "fixture-document:10",
+        equals: "Alice",
+      },
+    ],
+    [
+      {
+        kind: "value",
+        label: "Name",
+        scope: "Recipient",
+        ref: "fixture-document:30",
+        equals: "Bob",
+      },
+    ],
+  );
+  expect(updateProgress(steps, state, [])).toBe(1);
+  Object.assign(state.actions.at(-1)!, { value: "Bob" });
+  expect(updateProgress(steps, state, [])).toBe(2);
+  Object.assign(state.actions[0]!, { ref: "fixture-document:99" });
+  expect(updateProgress(steps, state, [])).toBe(0);
+});
+
 test("action text checks must come from the goal, not invented counts or messages", () => {
   const plan = {
     steps: [

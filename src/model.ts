@@ -104,6 +104,9 @@ export function actionSpace(actions: Action[]) {
         index: String(elements.length + 1),
         label: action.label.split(" → ")[0]!,
         role: action.role,
+        ref: action.ref,
+        scope: action.scope || undefined,
+        context: action.context,
         value: action.kind === "select" ? action.current_value : action.value,
         checked: action.checked,
         selected: action.selected,
@@ -180,6 +183,9 @@ export async function choose(
               element: `[${index}] ${action.label}`,
               current_value: action.current_value ?? action.value ?? "",
               role: action.role,
+              ref: action.ref,
+              scope: action.scope,
+              context: action.context,
               checked: action.checked,
               selected: action.selected,
               expanded: action.expanded,
@@ -239,8 +245,23 @@ export function fieldContext(
   if (!("node" in action)) throw new Error("Text requires an observed field.");
   return {
     goal,
-    field: { label: action.label, role: action.role, value: action.value ?? "" },
-    page: { title: page.title, text: page.text.slice(0, 6000) },
+    field: {
+      node: action.node,
+      ref: action.ref ?? `${page.document_id}:${action.node}`,
+      label: action.label,
+      role: action.role,
+      value: action.value ?? "",
+      scope: action.scope ?? "",
+      context: action.context ?? "",
+      html_id: action.html_id ?? "",
+      html_name: action.html_name ?? "",
+    },
+    page: {
+      document_id: page.document_id,
+      url: page.url,
+      title: page.title,
+      text: page.text.slice(0, 6000),
+    },
     recent_actions: history.slice(-6).map(({ action, text }) => ({ action, text })),
   };
 }

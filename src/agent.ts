@@ -239,6 +239,8 @@ export class Agent {
     const entry = {
       step: state.history.length + 1,
       action: action.label,
+      ref: "node" in action ? action.ref : undefined,
+      scope: "node" in action ? action.scope : undefined,
       kind: action.kind,
       choice: decision.choice,
       probability: decision.probabilities[decision.choice]!,
