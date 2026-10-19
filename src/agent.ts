@@ -11,6 +11,7 @@ import type {
   Action,
   AgentState,
   Decision,
+  HistoryEntry,
   ModelCall,
   ModelRole,
   SettingsReader,
@@ -34,6 +35,7 @@ export class Agent {
   private pendingText: { key: string; text: string; helper: ModelCall } | null = null;
   private settings: SettingsReader;
   private selection: { fingerprint: string; decision: Decision; action?: Action } | null = null;
+  private pendingObservation: { entry: HistoryEntry; fingerprint: string } | null = null;
 
   constructor(
     readonly browser: BrowserDriver,
@@ -129,7 +131,20 @@ export class Agent {
       if (error instanceof StalePage) {
         this.state.status = "ready";
         if (name !== "tick") throw error;
-        this.state.page = await this.browser.observe(this.options.screenshots || this.state.record);
+        try {
+          this.acceptObservation(
+            await this.browser.observe(this.options.screenshots || this.state.record),
+          );
+          if (this.state.checkpoints.length) await this.progress();
+        } catch (recoveryError) {
+          this.state.status = "error";
+          this.state.stop_reason = {
+            code: "observation_failed",
+            message:
+              "Could not recover the page observation. Inspect the last action before starting a fresh task.",
+          };
+          throw recoveryError;
+        }
       } else {
         if (this.state.status !== "blocked") this.state.status = "error";
         this.pendingText = null;
@@ -232,7 +247,35 @@ export class Agent {
     if (decision.choice === "BLOCKED") {
       if (!(await this.browser.fresh(page)))
         throw new StalePage("Page changed since the decision.");
+      this.activity("observing");
+      const settled = this.browser.settle
+        ? await this.browser.settle(page, this.options.screenshots || state.record)
+        : await this.browser.observe(this.options.screenshots || state.record);
+      state.page = settled;
+      if (settled.fingerprint !== page.fingerprint && settled.readiness !== "loading") {
+        state.status = "ready";
+        await this.progress();
+        return;
+      }
       state.status = "blocked";
+      state.stop_reason =
+        settled.omitted_actions || settled.discovery_limited
+          ? {
+              code: "incomplete_observation",
+              message:
+                "Some controls were omitted from the observation. Narrow the page or scroll to the required control and start again.",
+            }
+          : settled.readiness === "loading" || settled.readiness === "empty"
+            ? {
+                code: "page_not_ready",
+                message:
+                  "No ready controls appeared within the bounded wait. Check whether the page is still loading, then start again.",
+              }
+            : {
+                code: "unsupported_step",
+                message:
+                  "The model could not choose a supported action for the current step. Review the page and task.",
+              };
       this.pendingText = null;
       return;
     }
@@ -311,19 +354,33 @@ export class Agent {
       elapsed_ms: state.elapsed_ms,
     };
     state.history.push(entry);
+    this.pendingObservation = { entry, fingerprint: page.fingerprint };
     this.activity("observing", action, text);
     await this.record(false);
-    state.page = await this.browser.observe(this.options.screenshots || state.record);
-    entry.page_changed = state.page.fingerprint !== page.fingerprint;
-    entry.url = state.page.url;
+    this.acceptObservation(await this.browser.observe(this.options.screenshots || state.record));
+    await this.progress();
+  }
+
+  private acceptObservation(page: AgentState["page"]) {
+    this.state.page = page;
+    if (!this.pendingObservation) return;
+    const { entry, fingerprint } = this.pendingObservation;
+    entry.page_changed = page.fingerprint !== fingerprint;
+    entry.url = page.url;
     entry.elapsed_ms = this.elapsed();
-    const repeated = state.history.slice(-3);
-    state.status =
+    this.pendingObservation = null;
+    const repeated = this.state.history.slice(-3);
+    this.state.status =
       repeated.length === 3 &&
       repeated.every((item) => item.page_changed === false && item.kind !== "wait")
         ? "blocked"
         : "ready";
-    await this.progress();
+    if (this.state.status === "blocked")
+      this.state.stop_reason = {
+        code: "no_progress",
+        message:
+          "Three browser actions produced no observed progress. Review the current step before starting again.",
+      };
   }
 
   private async record(screenshot = true) {

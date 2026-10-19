@@ -109,7 +109,7 @@ test("post-action stale observation keeps history and never replays the consumed
   await agent.command("tick");
   expect(driver.act).toHaveBeenCalledTimes(1);
   expect(agent.state.history[0]!.action).toBe("Go");
-  expect(agent.state.history[0]!.page_changed).toBeNull();
+  expect(agent.state.history[0]!.page_changed).toBe(false);
   expect(agent.state.decision).toBeNull();
 });
 
@@ -250,3 +250,43 @@ test.each(["new fingerprint", "reused fingerprint", "changed decision"])(
     expect(agent.state.decision).toBeNull();
   },
 );
+
+test("recovered post-action observations participate in the three-repeat guard", async () => {
+  const { agent, driver } = runner("CLICK", "2");
+  let calls = 0;
+  driver.observe.mockImplementation(async () => {
+    if (++calls % 2) throw new StalePage("Transient observation failure");
+    return structuredClone(agent.state.page);
+  });
+  for (let i = 0; i < 3; i++) await agent.command("tick");
+  expect(agent.state.history.map((entry) => entry.page_changed)).toEqual([false, false, false]);
+  expect(agent.state.status).toBe("blocked");
+  expect(agent.state.stop_reason?.code).toBe("no_progress");
+  expect(driver.act).toHaveBeenCalledTimes(3);
+});
+
+test("a failed recovery stops without replaying an already consumed mutation", async () => {
+  const { agent, driver } = runner("CLICK", "2");
+  driver.observe.mockRejectedValue(new StalePage("Still navigating"));
+  await expect(agent.command("tick")).rejects.toBeInstanceOf(StalePage);
+  expect(agent.state.status).toBe("error");
+  expect(agent.state.stop_reason?.code).toBe("observation_failed");
+  expect(agent.state.history[0]!.page_changed).toBeNull();
+  expect(driver.act).toHaveBeenCalledTimes(1);
+});
+
+test("BLOCKED reobserves before stopping and reports incomplete coverage", async () => {
+  const { agent, driver } = runner("BLOCKED");
+  driver.observe.mockImplementationOnce(async () => ({
+    ...agent.state.page,
+    fingerprint: "menu-appeared",
+  }));
+  await agent.command("tick");
+  expect(agent.state.status).toBe("ready");
+  agent.state.page.omitted_actions = 12;
+  driver.observe.mockImplementation(async () => structuredClone(agent.state.page));
+  await agent.command("tick");
+  expect(agent.state.status).toBe("blocked");
+  expect(agent.state.stop_reason?.code).toBe("incomplete_observation");
+  expect(driver.act).not.toHaveBeenCalled();
+});

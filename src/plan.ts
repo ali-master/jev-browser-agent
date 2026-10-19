@@ -236,6 +236,11 @@ export async function createPlan(
             content: JSON.stringify({
               goal,
               page: { url: page.url, title: page.title, text: page.text },
+              observation: {
+                readiness: page.readiness ?? "ready",
+                omitted_actions: page.omitted_actions,
+                discovery_limited: page.discovery_limited ?? false,
+              },
               elements: actionSpace(page.actions).elements,
             }),
           },

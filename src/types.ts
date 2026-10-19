@@ -29,6 +29,7 @@ export type Action =
 export interface PageState {
   document_id: string;
   discovery_limited?: boolean;
+  readiness?: "ready" | "loading" | "empty";
   url: string;
   title: string;
   text: string;
@@ -42,6 +43,8 @@ export interface PageState {
   omitted_actions: number;
   fingerprint: string;
   screenshot?: string;
+  screenshot_status?: "captured" | "unavailable";
+  screenshot_error?: string;
 }
 
 export interface ElementView {

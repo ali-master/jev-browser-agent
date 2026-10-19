@@ -223,6 +223,11 @@ export async function choose(
     model: endpoint.model,
     state: {
       page: { url: page.url, title: page.title, text: page.text },
+      observation: {
+        readiness: page.readiness ?? "ready",
+        omitted_actions: page.omitted_actions,
+        discovery_limited: page.discovery_limited ?? false,
+      },
       elements,
       recent_actions: history
         .slice(-10)

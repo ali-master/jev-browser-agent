@@ -10,6 +10,7 @@ const READ_STATE = await Bun.file(new URL("./snapshot.js", import.meta.url)).tex
 export class StalePage extends Error {}
 export interface BrowserDriver {
   observe(screenshot?: boolean): Promise<PageState>;
+  settle?(page: PageState, screenshot?: boolean): Promise<PageState>;
   fresh(page: PageState, action?: Action): Promise<boolean>;
   act(action: Action, page: PageState, text?: string): Promise<void>;
   close(): Promise<void>;
@@ -34,6 +35,7 @@ export function fingerprint(page: PageState): string {
         actions,
         scroll: page.scroll,
         document: page.marker[0],
+        readiness: page.readiness,
       }),
     )
     .digest("hex");
@@ -42,6 +44,8 @@ export function fingerprint(page: PageState): string {
 export class Browser implements BrowserDriver {
   private afterInput: Action | null = null;
   private closed = false;
+  private observed = false;
+  private screenshotRequest: Promise<string> | null = null;
   private stopWatching: (() => Promise<void>) | null = null;
   private constructor(
     private browser: PlaywrightBrowser,
@@ -68,6 +72,7 @@ export class Browser implements BrowserDriver {
         acceptDownloads: false,
       });
       const page = await context.newPage();
+      if (options.headless === false) await page.bringToFront();
       const session = await context.newCDPSession(page);
       await session.send("Emulation.setFocusEmulationEnabled", { enabled: true });
       await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -91,17 +96,27 @@ export class Browser implements BrowserDriver {
       });
       if (result.exceptionDetails || !("value" in result.result)) throw new Error();
       return result.result.value as T;
-    } catch {
+    } catch (error) {
       if (mutating)
         throw new Error(
           "Browser mutation was interrupted; inspect the page before starting a new run.",
         );
+      if (
+        this.closed ||
+        !this.browser.isConnected() ||
+        (error instanceof Error &&
+          /Target closed|Session closed|browser has been closed|Connection closed/i.test(
+            error.message,
+          ))
+      )
+        throw new Error("Browser disconnected. Start a fresh task to open a new browser.");
       throw new StalePage("Document changed during observation.");
     }
   }
 
   async observe(screenshot = false): Promise<PageState> {
     const action = this.afterInput;
+    const waitForControls = !this.observed || Boolean(action);
     this.afterInput = null;
     if (action) {
       // Read-only settling happens after the action has been recorded by Agent.
@@ -132,11 +147,16 @@ export class Browser implements BrowserDriver {
       try {
         const state = await this.evaluate<PageState | null>(READ_STATE);
         if (!state) throw new StalePage("Document is navigating.");
+        if (
+          attempt < 9 &&
+          (state.readiness === "loading" || (waitForControls && state.readiness === "empty"))
+        ) {
+          await Bun.sleep(100);
+          continue;
+        }
         state.fingerprint = fingerprint(state);
-        if (screenshot)
-          state.screenshot = (
-            await this.session.send("Page.captureScreenshot", { format: "jpeg", quality: 72 })
-          ).data;
+        this.observed = true;
+        if (screenshot) await this.capture(state);
         return state;
       } catch (error) {
         if (!(error instanceof StalePage) || attempt === 9) throw error;
@@ -144,6 +164,47 @@ export class Browser implements BrowserDriver {
       }
     }
     throw new StalePage("Page did not settle.");
+  }
+
+  private async capture(state: PageState) {
+    state.screenshot_status = "unavailable";
+    state.screenshot_error = "Screenshot unavailable; DOM observation remains usable.";
+    if (this.screenshotRequest) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const request = this.session
+        .send("Page.captureScreenshot", { format: "jpeg", quality: 72 })
+        .then((result) => result.data);
+      this.screenshotRequest = request;
+      const clear = () => {
+        if (this.screenshotRequest === request) this.screenshotRequest = null;
+      };
+      void request.then(clear, clear);
+      state.screenshot = await Promise.race([
+        request,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Screenshot timeout")), 1000);
+        }),
+      ]);
+      state.screenshot_status = "captured";
+      delete state.screenshot_error;
+    } catch {
+      /* A missing frame must not discard a healthy DOM observation. */
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async settle(page: PageState, screenshot = false): Promise<PageState> {
+    const deadline = Date.now() + 1000;
+    let current = page;
+    do {
+      await Bun.sleep(100);
+      current = await this.observe();
+      if (current.fingerprint !== page.fingerprint && current.readiness !== "loading") break;
+    } while (Date.now() < deadline);
+    if (screenshot) await this.capture(current);
+    return current;
   }
 
   async fresh(page: PageState, action?: Action): Promise<boolean> {

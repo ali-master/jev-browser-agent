@@ -292,6 +292,13 @@
     if (!(a.node in guards)) guards[a.node] = cache.guard(cache.nodes.get(a.node));
   // Compare meaning and identity. Geometry is always resolved and hit-tested just before input.
   const semantics = actions.map(({ rect, ...action }) => action);
+  const readiness = [...document.querySelectorAll('[aria-busy="true"]')].some(visible)
+    ? "loading"
+    : actions.length
+      ? "ready"
+      : document.readyState === "complete"
+        ? "empty"
+        : "loading";
   const marker = [
     performance.timeOrigin,
     location.href,
@@ -303,6 +310,7 @@
     text,
     semantics,
     page_key[6],
+    readiness,
   ];
   const omitted_actions = Math.max(0, actions.length - 250);
   actions.splice(250);
@@ -315,6 +323,7 @@
   return {
     document_id,
     discovery_limited,
+    readiness,
     url: location.href,
     title: document.title,
     w: innerWidth,

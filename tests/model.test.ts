@@ -291,3 +291,19 @@ test("network failures retry within a fixed request budget", async () => {
     fetch.mockRestore();
   }
 });
+
+test("decision input includes observation readiness and truncation", async () => {
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(body.state.observation).toEqual({
+      readiness: "loading",
+      omitted_actions: 17,
+      discovery_limited: true,
+    });
+    return Response.json(decisionResponse(body, "WAIT", ""));
+  });
+  servers.push(p.server);
+  const state = page();
+  Object.assign(state, { readiness: "loading", omitted_actions: 17, discovery_limited: true });
+  await choose(state, "Wait for the form", [], p.endpoint, false);
+});

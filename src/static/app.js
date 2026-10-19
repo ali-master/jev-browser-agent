@@ -209,13 +209,15 @@ function renderBrowser() {
     frame?.title || (url === page?.url ? page?.title : "Navigating…") || "Isolated browser";
   $("feed-status").textContent = frame
     ? "REVIEW"
-    : !connected
-      ? "RECONNECTING"
-      : stopped()
-        ? "FINAL PAGE"
-        : state.live_available
-          ? "LIVE"
-          : "SNAPSHOT";
+    : !image && page?.screenshot_status === "unavailable"
+      ? "IMAGE UNAVAILABLE"
+      : !connected
+        ? "RECONNECTING"
+        : stopped()
+          ? "FINAL PAGE"
+          : state.live_available
+            ? "LIVE"
+            : "SNAPSHOT";
   $("feed-status").dataset.mode = frame
     ? "review"
     : stopped()
@@ -237,9 +239,11 @@ function renderBrowser() {
   $("action-banner").dataset.review = Boolean(frame);
   $("frame-note").textContent = frame
     ? `Saved after ${frame.step} action${frame.step === 1 ? "" : "s"}`
-    : state.activity
-      ? "Watching the actual browser"
-      : `${state.history.length} actions performed`;
+    : !image && page?.screenshot_status === "unavailable"
+      ? "Page image unavailable; the agent can still read the page."
+      : state.activity
+        ? "Watching the actual browser"
+        : `${state.history.length} actions performed`;
   $("empty").hidden = Boolean(image);
   $("screenshot").hidden = !image;
   if (image && $("screenshot").getAttribute("src") !== image) $("screenshot").src = image;
@@ -253,7 +257,7 @@ function renderBrowser() {
   for (const action of page?.actions || [])
     if (action.rect && !targets.has(action.node)) targets.set(action.node, action);
   $("targets").innerHTML =
-    frame || url !== page?.url
+    frame || !image || url !== page?.url
       ? ""
       : [...targets.values()]
           .map((a, i) => {

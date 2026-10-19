@@ -1,4 +1,5 @@
-import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, spyOn, test } from "bun:test";
+import type { CDPSession } from "playwright";
 import { Browser, StalePage, fingerprint } from "../src/browser.js";
 import { fixture, page } from "./helpers.js";
 import { fieldContext } from "../src/model.js";
@@ -348,3 +349,70 @@ test("native constraints and readonly changes invalidate the selected input", as
   await browser.evaluate("document.querySelector('input').readOnly=true");
   expect((await browser.observe()).actions.some((a) => a.kind === "fill")).toBe(false);
 });
+
+test("first observation waits for delayed controls instead of returning an empty action space", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<main>Loading</main>';setTimeout(()=>document.querySelector('main').innerHTML='<button>Ready</button>',250);true`,
+  );
+  const state = await browser.observe();
+  expect(state.readiness).toBe("ready");
+  expect(state.actions.some((a) => a.label === "Ready")).toBe(true);
+});
+
+test("settling gives delayed menus a bounded chance to appear", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<button id="open">Open</button><main></main>';document.querySelector('button').onclick=()=>setTimeout(()=>document.querySelector('main').innerHTML='<button>Menu choice</button>',350);true`,
+  );
+  const state = await browser.observe();
+  await browser.act(
+    state.actions.find((a) => a.label === "Open")!,
+    state,
+  );
+  const immediate = await browser.observe();
+  const settled = await browser.settle(immediate);
+  expect(settled.actions.some((a) => a.label === "Menu choice")).toBe(true);
+});
+
+test("permanently empty and busy pages return bounded readiness metadata", async () => {
+  await browser.evaluate(`document.body.innerHTML='<main aria-busy="true">Loading</main>';true`);
+  const began = performance.now();
+  const busy = await browser.observe();
+  expect(busy.readiness).toBe("loading");
+  expect(performance.now() - began).toBeLessThan(2500);
+  await browser.evaluate("document.querySelector('main').removeAttribute('aria-busy');true");
+  expect((await browser.observe()).readiness).toBe("empty");
+});
+
+test.each(["reject", "hang"])(
+  "a screenshot %s preserves DOM and never queues repeated capture",
+  async (mode) => {
+    const session = (browser as unknown as { session: CDPSession }).session;
+    const original = session.send.bind(session);
+    let captures = 0;
+    const send = spyOn(session, "send").mockImplementation((method: any, params: any) => {
+      if (method === "Page.captureScreenshot") {
+        captures++;
+        return mode === "reject"
+          ? Promise.reject(new Error("Screenshot failed"))
+          : new Promise(() => {});
+      }
+      return original(method, params);
+    });
+    try {
+      const state = await browser.observe(true);
+      expect(state.actions.some((a) => a.label === "Search hotels")).toBe(true);
+      expect(state.screenshot_status).toBe("unavailable");
+      expect(state.screenshot).toBeUndefined();
+      await browser.observe(true);
+      expect(captures).toBe(mode === "hang" ? 1 : 2);
+      await browser.act(
+        state.actions.find((a) => a.kind === "fill")!,
+        state,
+        "Lisbon",
+      );
+      expect(await browser.evaluate("document.querySelector('#city').value")).toBe("Lisbon");
+    } finally {
+      send.mockRestore();
+    }
+  },
+);
