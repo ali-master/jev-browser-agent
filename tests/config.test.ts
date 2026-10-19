@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SettingsStore } from "../src/config";
@@ -17,12 +17,12 @@ afterEach(async () => {
 
 test("reads edited .env values afresh on every call", async () => {
   const { directory, store } = await setup();
-  await writeFile(
+  await Bun.write(
     join(directory, ".env"),
     'TYPESAFE_BASE_URL="http://localhost:1234/v1"\nTYPESAFE_API_KEY=first\nTYPESAFE_MODEL=local\n',
   );
   expect((await store.read()).decision.model).toBe("local");
-  await writeFile(
+  await Bun.write(
     join(directory, ".env"),
     "TYPESAFE_BASE_URL=https://api.typesafe.ai/v1\nTYPESAFE_API_KEY=second\nTYPESAFE_MODEL=jev-latest\n",
   );
@@ -41,17 +41,15 @@ test("settings persist, redact keys, retain omitted keys, clear explicit empty k
   expect(JSON.stringify(saved)).not.toContain("secret-one");
   expect(saved.decision.hasApiKey).toBe(true);
   expect((await stat(store.path)).mode & 0o777).toBe(0o600);
+  expect((await stat(join(directory, ".jev"))).mode & 0o777).toBe(0o700);
   const restarted = new SettingsStore(directory, {});
   await restarted.save({ decision: { model: "jev-new" } });
   expect((await restarted.read()).decision.apiKey).toBe("secret-one");
   await restarted.save({ decision: { apiKey: "" } });
   expect((await restarted.read()).decision.apiKey).toBe("");
-  await writeFile(
+  await Bun.write(
     store.path,
-    (await readFile(store.path, "utf8")).replace(
-      "jev-new",
-      "externally-edited",
-    ),
+    (await Bun.file(store.path).text()).replace("jev-new", "externally-edited"),
   );
   expect((await store.read()).decision.model).toBe("externally-edited");
 });
@@ -80,7 +78,7 @@ test.each([
 test("malformed saved settings fail closed without echoing file contents", async () => {
   const { store } = await setup();
   await store.save({});
-  await writeFile(store.path, "super-secret malformed JSON");
+  await Bun.write(store.path, "super-secret malformed JSON");
   await expect(store.read()).rejects.toThrow(
     "Local model settings contain invalid JSON.",
   );

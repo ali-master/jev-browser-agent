@@ -304,12 +304,22 @@ test("a missing required field value blocks clearly without typing or retrying",
   expect(agent.state.history).toHaveLength(0);
 });
 
-test.each(["new fingerprint", "reused fingerprint", "changed decision"])(
+test.each([
+  "new fingerprint",
+  "reused fingerprint",
+  "changed decision",
+  "changed decision prototype",
+  "changed nested prototype",
+])(
   "a consumer cannot rebind an old decision to a new control: %s",
   async (change) => {
     const { agent, driver } = runner("CLICK", "2");
     await agent.command("predict");
     if (change === "changed decision") agent.state.decision!.choice = "e1";
+    else if (change === "changed decision prototype")
+      Object.setPrototypeOf(agent.state.decision!, null);
+    else if (change === "changed nested prototype")
+      Object.setPrototypeOf(agent.state.decision!.target_probabilities, null);
     else {
       const next = structuredClone(agent.state.page);
       Object.assign(

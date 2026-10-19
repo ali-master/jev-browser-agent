@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { chromium } from "playwright";
 import type {
@@ -32,7 +31,7 @@ export function fingerprint(page: PageState): string {
     const { rect: _, ...semantic } = action;
     return semantic;
   });
-  return createHash("sha256")
+  return new Bun.CryptoHasher("sha256")
     .update(
       JSON.stringify({
         url: page.url,
@@ -243,20 +242,23 @@ export class Browser implements BrowserDriver {
       if (!Number.isSafeInteger(action.node)) return false;
       const current = await this.evaluate(`(() => { const c=window.__jevFast;
         return c ? [c.pageKey(),c.guard(c.nodes.get(${action.node}))] : null; })()`);
-      return isDeepStrictEqual(current, [
-        page.page_key,
-        page.guards[String(action.node)],
-      ]);
+      return Bun.deepEquals(
+        current,
+        [page.page_key, page.guards[String(action.node)]],
+        true,
+      );
     }
-    return isDeepStrictEqual(
+    return Bun.deepEquals(
       await this.evaluate(
         `(() => { const state=${READ_STATE}; return state?.marker ?? null; })()`,
       ),
       page.marker,
+      true,
     );
   }
 
   async act(action: Action, page: PageState, text?: string): Promise<void> {
+    // Bun.deepEquals accepts null-prototype copies, unlike this input guard.
     if (!page.actions.some((observed) => isDeepStrictEqual(action, observed)))
       throw new Error("Action is not from the observed page.");
     if (

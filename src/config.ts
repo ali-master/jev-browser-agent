@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { parseEnv } from "node:util";
 import type { Endpoint, Settings } from "./types";
@@ -90,7 +90,7 @@ function endpoint(value: unknown): Endpoint {
 
 async function optionalFile(path: string): Promise<string | undefined> {
   try {
-    return await readFile(path, "utf8");
+    return await Bun.file(path).text();
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw new Error("Cannot read local model settings.");
@@ -180,6 +180,7 @@ export class SettingsStore {
     }
     await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
     const temporary = `${this.path}.${crypto.randomUUID()}.tmp`;
+    // Bun 1.4.3 did not honor Bun.write's mode for string input on macOS.
     await writeFile(temporary, `${JSON.stringify(updated, null, 2)}\n`, {
       mode: 0o600,
     });

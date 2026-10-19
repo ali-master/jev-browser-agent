@@ -186,6 +186,16 @@ test("forged actions and invalid text never reach browser input", async () => {
   await expect(
     browser.act({ ...action, id: "invented" }, state, "hello"),
   ).rejects.toThrow("observed page");
+  await expect(
+    browser.act(
+      Object.assign({}, action, { extra: undefined }),
+      state,
+      "hello",
+    ),
+  ).rejects.toThrow("observed page");
+  await expect(
+    browser.act(Object.assign(Object.create(null), action), state, "hello"),
+  ).rejects.toThrow("observed page");
   await expect(browser.act(action, state, "")).rejects.toThrow("nothing typed");
   expect(await browser.evaluate("document.querySelector('#city').value")).toBe(
     "",
@@ -194,6 +204,9 @@ test("forged actions and invalid text never reach browser input", async () => {
 
 test("fingerprints ignore screenshots and geometry, but include node identity and field values", () => {
   const state = page();
+  expect(fingerprint(state)).toBe(
+    "e20cbb144fa60d6e5190e71656ef9eeaf0adb8864dd8f136067097a5210c02b5",
+  );
   const other = structuredClone(state);
   other.screenshot = "new frame";
   if ("node" in other.actions[0]!)
