@@ -8,9 +8,9 @@ import {
   test,
 } from "bun:test";
 import type { CDPSession } from "playwright";
-import { Browser, StalePage, fingerprint } from "../src/browser.js";
-import { fixture, page } from "./helpers.js";
-import { fieldContext } from "../src/model.js";
+import { Browser, StalePage, fingerprint } from "../src/browser";
+import { fixture, page } from "./helpers";
+import { fieldContext } from "../src/model";
 
 let server: Bun.Server<undefined>;
 let browser: Browser;

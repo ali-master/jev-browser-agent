@@ -1,11 +1,11 @@
-import { fingerprint } from "../src/browser.js";
+import { fingerprint } from "../src/browser";
 import type {
   ChoiceAnswer,
   DecisionRequest,
   Endpoint,
   PageState,
   Settings,
-} from "../src/types.js";
+} from "../src/types";
 
 export function page(): PageState {
   const state: PageState = {

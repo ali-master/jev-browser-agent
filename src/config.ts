@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { parseEnv } from "node:util";
-import type { Endpoint, Settings } from "./types.js";
+import type { Endpoint, Settings } from "./types";
 
 export function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

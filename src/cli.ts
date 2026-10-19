@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
-import { Agent } from "./agent.js";
-import { startServer } from "./server.js";
-import { formatUsage } from "./usage.js";
+import { Agent } from "./agent";
+import { startServer } from "./server";
+import { formatUsage } from "./usage";
 
 const help = `Jev Browser Agent (Bun)
 

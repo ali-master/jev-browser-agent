@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { formatUsage, summarizeUsage } from "../src/usage.js";
-import type { ModelCall, ModelRole } from "../src/types.js";
+import { formatUsage, summarizeUsage } from "../src/usage";
+import type { ModelCall, ModelRole } from "../src/types";
 
 const call = (
   patch: Partial<ModelCall & { role: ModelRole }> = {},

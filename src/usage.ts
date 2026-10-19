@@ -1,4 +1,4 @@
-import type { ModelCall, ModelRole } from "./types.js";
+import type { ModelCall, ModelRole } from "./types";
 
 const empty = () => ({
   requests: 0,

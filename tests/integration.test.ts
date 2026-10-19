@@ -3,10 +3,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { chromium } from "playwright";
-import { Agent } from "../src/agent.js";
-import type { Browser } from "../src/browser.js";
-import { SettingsStore } from "../src/config.js";
-import { startServer } from "../src/server.js";
+import { Agent } from "../src/agent";
+import type { Browser } from "../src/browser";
+import { SettingsStore } from "../src/config";
+import { startServer } from "../src/server";
 import {
   chatResponse,
   choice,
@@ -14,8 +14,8 @@ import {
   decisionResponse,
   fixture,
   provider,
-} from "./helpers.js";
-import type { DecisionRequest, ElementView } from "../src/types.js";
+} from "./helpers";
+import type { DecisionRequest, ElementView } from "../src/types";
 
 const cleanup: (() => Promise<unknown> | void)[] = [];
 afterEach(async () => {

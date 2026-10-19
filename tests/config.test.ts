@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SettingsStore } from "../src/config.js";
+import { SettingsStore } from "../src/config";
 
 const directories: string[] = [];
 async function setup() {

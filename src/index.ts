@@ -1,8 +1,8 @@
-export { Agent } from "./agent.js";
-export type { AgentOptions } from "./agent.js";
-export { Browser, StalePage, fingerprint } from "./browser.js";
-export type { BrowserDriver, BrowserOptions } from "./browser.js";
-export { SettingsStore } from "./config.js";
+export { Agent } from "./agent";
+export type { AgentOptions } from "./agent";
+export { Browser, StalePage, fingerprint } from "./browser";
+export type { BrowserDriver, BrowserOptions } from "./browser";
+export { SettingsStore } from "./config";
 export {
   actionSpace,
   choose,
@@ -10,6 +10,6 @@ export {
   fieldContext,
   fieldText,
   validateChoice,
-} from "./model.js";
-export { summarizeUsage, formatUsage } from "./usage.js";
-export type * from "./types.js";
+} from "./model";
+export { summarizeUsage, formatUsage } from "./usage";
+export type * from "./types";

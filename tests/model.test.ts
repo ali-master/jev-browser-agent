@@ -7,15 +7,15 @@ import {
   fieldText,
   postJson,
   validateChoice,
-} from "../src/model.js";
+} from "../src/model";
 import {
   chatResponse,
   choice,
   decisionResponse,
   page,
   provider,
-} from "./helpers.js";
-import type { DecisionRequest, ModelCall } from "../src/types.js";
+} from "./helpers";
+import type { DecisionRequest, ModelCall } from "../src/types";
 
 const servers: Bun.Server<undefined>[] = [];
 afterEach(async () => {

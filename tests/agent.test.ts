@@ -1,14 +1,14 @@
 import { afterEach, expect, mock, test } from "bun:test";
-import { Agent } from "../src/agent.js";
-import { StalePage, fingerprint } from "../src/browser.js";
+import { Agent } from "../src/agent";
+import { StalePage, fingerprint } from "../src/browser";
 import {
   chatResponse,
   completionResponse,
   decisionResponse,
   page,
   provider,
-} from "./helpers.js";
-import type { DecisionRequest, TaskStep } from "../src/types.js";
+} from "./helpers";
+import type { DecisionRequest, TaskStep } from "../src/types";
 
 const servers: Bun.Server<undefined>[] = [];
 afterEach(async () => {

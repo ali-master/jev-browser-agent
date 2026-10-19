@@ -1,8 +1,8 @@
-import { Agent } from "./agent.js";
-import { Browser } from "./browser.js";
-import { SettingsStore, object } from "./config.js";
-import { MAX_STEPS } from "./questions.js";
-import { checkModels } from "./model.js";
+import { Agent } from "./agent";
+import { Browser } from "./browser";
+import { SettingsStore, object } from "./config";
+import { MAX_STEPS } from "./questions";
+import { checkModels } from "./model";
 
 const staticRoot = new URL("./static/", import.meta.url);
 const headers = {

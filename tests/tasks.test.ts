@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { Agent } from "../src/agent.js";
-import { chatResponse, decisionResponse, provider } from "./helpers.js";
-import type { DecisionRequest, ElementView, TaskStep } from "../src/types.js";
+import { Agent } from "../src/agent";
+import { chatResponse, decisionResponse, provider } from "./helpers";
+import type { DecisionRequest, ElementView, TaskStep } from "../src/types";
 
 const cleanup: (() => Promise<unknown> | void)[] = [];
 afterEach(async () => {

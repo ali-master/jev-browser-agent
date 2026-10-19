@@ -1,4 +1,4 @@
-import { Agent } from "../src/index.js";
+import { Agent } from "../src/index";
 
 const [url, goal] = Bun.argv.slice(2);
 if (!url || !goal)

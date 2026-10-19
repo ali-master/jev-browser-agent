@@ -1,5 +1,5 @@
-import { object } from "./config.js";
-import { actionSpace, postJson } from "./model.js";
+import { object } from "./config";
+import { actionSpace, postJson } from "./model";
 import type {
   Checkpoint,
   CompletionCheck,
@@ -10,7 +10,7 @@ import type {
   ModelObserver,
   PageState,
   TaskStep,
-} from "./types.js";
+} from "./types";
 
 const PLAN = `Make a completion checklist for the user's browser goal. Return only JSON:
 {"steps":[{"instruction":"one specific next step including its required value","checks":[...]}]}.

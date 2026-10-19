@@ -1,5 +1,5 @@
-import { object } from "./config.js";
-import { CURRENT_STEP, NEXT_ACTION, TARGET, TEXT_VALUE } from "./questions.js";
+import { object } from "./config";
+import { CURRENT_STEP, NEXT_ACTION, TARGET, TEXT_VALUE } from "./questions";
 import type {
   Action,
   ChoiceAnswer,
@@ -14,7 +14,7 @@ import type {
   PageState,
   SettingsReader,
   TargetOperation,
-} from "./types.js";
+} from "./types";
 
 class ProviderFailure extends Error {
   constructor(

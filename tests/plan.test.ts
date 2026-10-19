@@ -4,13 +4,9 @@ import {
   reviewCompletion,
   updateProgress,
   validatePlan,
-} from "../src/plan.js";
-import type {
-  Checkpoint,
-  CompletionCheck,
-  HistoryEntry,
-} from "../src/types.js";
-import { chatResponse, completionResponse, page, provider } from "./helpers.js";
+} from "../src/plan";
+import type { Checkpoint, CompletionCheck, HistoryEntry } from "../src/types";
+import { chatResponse, completionResponse, page, provider } from "./helpers";
 
 const servers: Bun.Server<undefined>[] = [];
 afterEach(async () => {

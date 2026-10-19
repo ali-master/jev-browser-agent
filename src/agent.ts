@@ -1,13 +1,13 @@
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { Browser, StalePage } from "./browser.js";
-import type { BrowserDriver, BrowserOptions } from "./browser.js";
-import { SettingsStore } from "./config.js";
-import { actionSpace, choose, fieldContext, fieldText } from "./model.js";
-import { MAX_STEPS } from "./questions.js";
-import { createPlan, reviewCompletion, updateProgress } from "./plan.js";
-import { summarizeUsage } from "./usage.js";
+import { Browser, StalePage } from "./browser";
+import type { BrowserDriver, BrowserOptions } from "./browser";
+import { SettingsStore } from "./config";
+import { actionSpace, choose, fieldContext, fieldText } from "./model";
+import { MAX_STEPS } from "./questions";
+import { createPlan, reviewCompletion, updateProgress } from "./plan";
+import { summarizeUsage } from "./usage";
 import type {
   Action,
   AgentState,
@@ -17,7 +17,7 @@ import type {
   ModelRole,
   SettingsReader,
   TaskStep,
-} from "./types.js";
+} from "./types";
 
 export interface AgentOptions extends BrowserOptions {
   screenshots?: boolean;

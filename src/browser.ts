@@ -6,8 +6,8 @@ import type {
   BrowserContext,
   CDPSession,
 } from "playwright";
-import { httpUrl } from "./config.js";
-import type { Action, PageState } from "./types.js";
+import { httpUrl } from "./config";
+import type { Action, PageState } from "./types";
 
 const READ_STATE = await Bun.file(
   new URL("./snapshot.js", import.meta.url),
