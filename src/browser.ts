@@ -180,8 +180,13 @@ export class Browser implements BrowserDriver {
       });
     } else {
       if (!Number.isSafeInteger(action.node)) throw new Error("Invalid observed node.");
+      const nativeFill =
+        action.kind === "fill" &&
+        ["date", "time", "datetime-local", "month", "week", "range", "color"].includes(
+          action.input_type ?? "",
+        );
       const expected = [page.page_key, page.guards[String(action.node)]];
-      const target = await this.evaluate<{ x: number; y: number } | null>(
+      const target = await this.evaluate<{ x: number; y: number; invalid?: boolean } | null>(
         `(action => {
         const c=window.__jevFast, e=c?.nodes.get(action.node);
         if (!e?.isConnected || JSON.stringify([c.pageKey(),c.guard(e)])!==${JSON.stringify(JSON.stringify(expected))}) return null;
@@ -189,6 +194,19 @@ export class Browser implements BrowserDriver {
         if (action.kind==='fill' && (e.readOnly || e.getAttribute('aria-readonly')==='true')) return null;
         const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
         if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight || !e.contains(document.elementFromPoint(x,y))) return null;
+        if (${nativeFill}) {
+          if (e.tagName!=='INPUT' || e.type!==action.input_type) return null;
+          const value=${JSON.stringify(text ?? "")}, probe=document.createElement('input');
+          probe.type=e.type;
+          for (const key of ['min','max','step']) probe[key]=e[key];
+          probe.value=value;
+          if (!probe.value || !probe.validity.valid ||
+            (e.type==='range' && (!Number.isFinite(Number(value)) || probe.valueAsNumber!==Number(value))) ||
+            (e.type==='color' && !/^#[0-9a-f]{6}$/i.test(value))) return {x,y,invalid:true};
+          e.value=probe.value;
+          e.dispatchEvent(new Event('input',{bubbles:true}));
+          e.dispatchEvent(new Event('change',{bubbles:true}));
+        }
         if (action.kind==='select') {
           const option=e.options?.[action.option_index];
           if (e.tagName!=='SELECT' || !Number.isSafeInteger(action.option_index) || !option || option!==c.nodes.get(action.option_node) || option.value!==action.value || option.disabled || option.closest('optgroup[disabled]')) return null;
@@ -198,10 +216,12 @@ export class Browser implements BrowserDriver {
         }
         return {x,y};
       })(${JSON.stringify(action)})`,
-        action.kind === "select",
+        action.kind === "select" || nativeFill,
       );
       if (!target) throw new StalePage("Target changed or is covered. Observe again.");
-      if (action.kind !== "select") {
+      if (target.invalid)
+        throw new Error("Invalid native input value or constraint; nothing entered.");
+      if (action.kind !== "select" && !nativeFill) {
         // CDP inputs are never retried: a rejected response can follow a successful mutation.
         for (const type of ["mousePressed", "mouseReleased"] as const) {
           await this.session.send("Input.dispatchMouseEvent", {

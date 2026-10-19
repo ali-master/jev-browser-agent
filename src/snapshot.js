@@ -61,6 +61,7 @@
     "textbox",
     "searchbox",
     "spinbutton",
+    "slider",
   ];
   const selector =
     "a[href],button,input,textarea,select,summary,label,[contenteditable],[onclick]," +
@@ -108,6 +109,9 @@
       if (["button", "submit", "reset", "image"].includes(e.type)) return "button";
       if (e.type === "search") return "searchbox";
       if (e.type === "number") return "spinbutton";
+      if (e.type === "range") return "slider";
+      if (["date", "time", "datetime-local", "month", "week", "color"].includes(e.type))
+        return "textbox";
       if (["text", "email", "url", "tel"].includes(e.type)) return "textbox";
     }
     return customClickable(e) ? "button" : null;
@@ -142,6 +146,7 @@
       e.checked ?? null,
       e.selectedIndex ?? null,
       e.readOnly ?? null,
+      [e.type ?? null, e.min ?? null, e.max ?? null, e.step ?? null],
       e.matches(":disabled"),
       e.getAttribute("aria-disabled"),
       e.getAttribute("aria-expanded"),
@@ -217,6 +222,10 @@
       label: name(e) || rname,
       rect: { x: r.x, y: r.y, w: r.width, h: r.height },
     };
+    if (e.tagName === "INPUT") {
+      base.input_type = e.type;
+      base.constraints = { min: e.min, max: e.max, step: e.step };
+    }
     for (const key of ["checked", "selected", "expanded"]) {
       const value = e.getAttribute("aria-" + key);
       if (value !== null) base[key] = value;
@@ -239,6 +248,7 @@
         !e.readOnly &&
         e.getAttribute("aria-readonly") !== "true" &&
         (["textbox", "searchbox", "spinbutton"].includes(rname) ||
+          (e.tagName === "INPUT" && e.type === "range") ||
           (rname === "combobox" && ["INPUT", "TEXTAREA"].includes(e.tagName)));
       const value =
         "value" in c

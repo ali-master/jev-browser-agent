@@ -295,3 +295,56 @@ test("fills all editable attribute forms and excludes false and nested editor ta
     });
   }
 });
+
+test.each([
+  ["date", "2026-11-20", "2026-02-31", "min=2026-11-01 max=2026-12-01"],
+  ["time", "10:30", "25:00", "min=09:00 max=17:00"],
+  ["datetime-local", "2026-11-20T10:30", "2026-11-20T25:00", ""],
+  ["month", "2026-11", "2026-13", ""],
+  ["week", "2026-W47", "2026-W99", ""],
+  ["range", "6", "7", "min=0 max=10 step=2"],
+  ["color", "#123456", "red", ""],
+])(
+  "sets native %s values and rejects invalid values before input",
+  async (type, value, invalid, constraints) => {
+    await browser.evaluate(
+      `document.body.innerHTML=${JSON.stringify(`<label>Native<input type="${type}" ${constraints}></label>`)};window.events=0;document.querySelector('input').oninput=()=>window.events++;true`,
+    );
+    let state = await browser.observe();
+    let action = state.actions.find((a) => a.kind === "fill")!;
+    expect(action).toMatchObject({ input_type: type });
+    await browser.act(action, state, value);
+    expect(await browser.evaluate("document.querySelector('input').value")).toBe(value);
+    expect(await browser.evaluate("window.events")).toBe(1);
+    state = await browser.observe();
+    action = state.actions.find((a) => a.kind === "fill")!;
+    await expect(browser.act(action, state, invalid)).rejects.toThrow("Invalid native input");
+    expect(await browser.evaluate("document.querySelector('input').value")).toBe(value);
+    expect(await browser.evaluate("window.events")).toBe(1);
+  },
+);
+
+test("native constraints and readonly changes invalidate the selected input", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<label>Day<input type="date" min="2026-11-01"></label>';true`,
+  );
+  let state = await browser.observe();
+  await browser.evaluate("document.querySelector('input').min='2026-12-01'");
+  await expect(
+    browser.act(
+      state.actions.find((a) => a.kind === "fill")!,
+      state,
+      "2026-11-20",
+    ),
+  ).rejects.toBeInstanceOf(StalePage);
+  state = await browser.observe();
+  await expect(
+    browser.act(
+      state.actions.find((a) => a.kind === "fill")!,
+      state,
+      "2026-11-20",
+    ),
+  ).rejects.toThrow("constraint");
+  await browser.evaluate("document.querySelector('input').readOnly=true");
+  expect((await browser.observe()).actions.some((a) => a.kind === "fill")).toBe(false);
+});

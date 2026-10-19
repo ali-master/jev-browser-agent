@@ -107,6 +107,8 @@ export function actionSpace(actions: Action[]) {
         ref: action.ref,
         scope: action.scope || undefined,
         context: action.context,
+        input_type: action.input_type,
+        constraints: action.constraints,
         value: action.kind === "select" ? action.current_value : action.value,
         checked: action.checked,
         selected: action.selected,
@@ -255,6 +257,8 @@ export function fieldContext(
       context: action.context ?? "",
       html_id: action.html_id ?? "",
       html_name: action.html_name ?? "",
+      input_type: action.input_type ?? "text",
+      constraints: action.constraints,
     },
     page: {
       document_id: page.document_id,

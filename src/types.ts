@@ -11,6 +11,8 @@ interface Target {
   context?: string;
   html_id?: string;
   html_name?: string;
+  input_type?: string;
+  constraints?: { min: string; max: string; step: string };
   value?: string;
   current_value?: string;
   checked?: string;
@@ -49,6 +51,8 @@ export interface ElementView {
   ref?: string;
   scope?: string;
   context?: string;
+  input_type?: string;
+  constraints?: { min: string; max: string; step: string };
   value?: string;
   checked?: string;
   selected?: string;
