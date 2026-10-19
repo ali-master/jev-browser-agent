@@ -164,40 +164,7 @@
               name="scenario"
               aria-label="Demo scenario"
             >
-              <optgroup label="Local demos">
-                <option
-                  value="travel"
-                  data-description="Find a stay using search and filters."
-                >
-                  Travel planner
-                </option>
-                <option
-                  value="crowded"
-                  data-description="More choices, scrolling, and a longer journey."
-                >
-                  Travel planner · crowded
-                </option>
-                <option
-                  value="research"
-                  data-description="Find and open an article in the reading room."
-                >
-                  Reading room
-                </option>
-              </optgroup>
-              <optgroup label="Live browsing">
-                <option
-                  value="flights"
-                  data-description="Open the real Google Flights website."
-                >
-                  Google Flights
-                </option>
-                <option
-                  value="custom"
-                  data-description="Bring your own URL and give the agent a goal."
-                >
-                  Your website
-                </option>
-              </optgroup>
+              __SCENARIOS__
             </select>
             <select
               id="run-mode"
@@ -219,6 +186,9 @@
             </select>
           </div>
         </div>
+        <p id="scenario-description" class="scenario-description">
+          Search, filter, and open a stay.
+        </p>
         <div id="start-url-row" hidden>
           <label for="start-url">Starting page URL</label>
           <input

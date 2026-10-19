@@ -94,6 +94,11 @@ h3 {
   font-weight: 600;
   margin: 0;
 }
+.scenario-description {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
 p {
   font-size: 14px;
   line-height: 1.55;

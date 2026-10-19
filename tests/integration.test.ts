@@ -268,6 +268,23 @@ test("inspector saves private settings and drives a complete task through its co
   await page.locator("#scenario").selectOption("flights");
   expect(await page.locator("#goal").inputValue()).toContain("Google Flights");
   expect(await page.locator("#start-url-row").isVisible()).toBe(false);
+  for (const id of [
+    "flights-one-way",
+    "flights-round-trip",
+    "flights-nonstop",
+    "wikipedia",
+    "hacker-news",
+    "github",
+  ]) {
+    await page.locator("#scenario").selectOption(id);
+    expect((await page.locator("#goal").inputValue()).length).toBeGreaterThan(
+      100,
+    );
+    expect(
+      (await page.locator("#scenario-description").textContent())!.length,
+    ).toBeGreaterThan(20);
+  }
+  expect(await page.locator("#pace").isChecked()).toBe(false);
   await page.locator("#scenario").selectOption("custom");
   await page.locator("#start-url").fill(url);
   await page.locator("#goal").fill("Search for Design hotels in Lisbon");

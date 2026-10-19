@@ -11,17 +11,6 @@ let reviewStep = null,
   historyKey = "";
 const stopped = () =>
   ["done", "blocked", "error", "closed"].includes(state?.status);
-const goals = {
-  custom: "",
-  travel:
-    "Find a Design stay in Lisbon with Free cancellation and open Casa Flora.",
-  crowded:
-    "Type Lisbon in Destination; select Design in Stay category; enable Free cancellation; submit with Find stays; scroll to Casa Flora and click View Casa Flora to open its details page.",
-  flights:
-    "Reject optional cookies if prompted, then open the Google Flights flight search page.",
-  research:
-    "Open the article about using finite choices to control browser agents.",
-};
 const escape = (value) =>
   String(value ?? "").replace(
     /[&<>"']/g,
@@ -566,7 +555,9 @@ $("task-form").addEventListener("submit", (event) => {
   }, "Opening a fresh browser…");
 });
 $("scenario").addEventListener("change", () => {
-  $("goal").value = goals[$("scenario").value];
+  const selected = $("scenario").selectedOptions[0];
+  $("goal").value = selected.dataset.goal;
+  $("scenario-description").textContent = selected.dataset.description;
   $("start-url-row").hidden = $("scenario").value !== "custom";
   $("start-url").required = $("scenario").value === "custom";
 });

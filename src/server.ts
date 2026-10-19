@@ -4,6 +4,7 @@ import type { AgentPointer } from "./browser";
 import { SettingsStore, object } from "./config";
 import { MAX_STEPS } from "./questions";
 import { checkModels } from "./model";
+import { scenarios, scenarioOptions } from "./scenarios";
 
 const staticRoot = new URL("./static/", import.meta.url);
 const headers = {
@@ -193,7 +194,9 @@ export function startServer(
           const content = Bun.file(new URL(file[0], staticRoot));
           return new Response(
             path === "/"
-              ? (await content.text()).replace("__TOKEN__", token)
+              ? (await content.text())
+                  .replace("__TOKEN__", token)
+                  .replace("__SCENARIOS__", () => scenarioOptions())
               : content,
             {
               headers: {
@@ -256,20 +259,12 @@ export function startServer(
             if (!goal || goal.length > 2000)
               throw new Error("Enter a goal of 1–2,000 characters.");
             const scenario = body.scenario ?? "custom";
-            if (
-              !["custom", "travel", "crowded", "research", "flights"].includes(
-                String(scenario),
-              )
-            )
-              throw new Error("Unknown demo scenario.");
+            const preset = scenarios().find((item) => item.id === scenario);
+            if (!preset) throw new Error("Unknown demo scenario.");
             const url =
               scenario === "custom"
                 ? body.url
-                : scenario === "flights"
-                  ? "https://www.google.com/travel/flights?hl=en"
-                  : scenario === "crowded"
-                    ? `${origin}/fixture.html?scenario=travel&crowded=1`
-                    : `${origin}/fixture.html?scenario=${scenario}`;
+                : new URL(preset.url, origin).href;
             if (typeof url !== "string" || !url.trim())
               throw new Error("Enter a starting page URL.");
             const config = await store.read();
