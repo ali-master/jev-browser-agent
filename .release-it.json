@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/release-it@21.1.1/schema/release-it.json",
+  "git": {
+    "commitMessage": "chore(release): v${version}",
+    "commit": true,
+    "tag": true,
+    "push": true
+  },
+  "npm": {
+    "publishPackageManager": "bun"
+  },
+  "hooks": {
+    "after:bump": "bun install --lockfile-only --ignore-scripts"
+  },
+  "github": {
+    "release": true
+  }
+}
