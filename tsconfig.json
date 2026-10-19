@@ -12,5 +12,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "examples/**/*.ts"],
-  "exclude": ["node_modules", "dist", "jev-ultrafast", "venv"]
+  "exclude": ["node_modules", "dist", "venv"]
 }

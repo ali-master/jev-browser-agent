@@ -61,7 +61,7 @@ There are no site-specific action scripts or prepared field strings in the polic
 Requires **Bun 1.4.3+**. The active project uses Bun for installation, execution, testing and builds.
 
 ```sh
-git clone --recurse-submodules https://github.com/ali-master/jev-browser-agent.git
+git clone https://github.com/ali-master/jev-browser-agent.git
 cd jev-browser-agent
 bun install --frozen-lockfile
 bun run browser:install
@@ -77,7 +77,7 @@ The inspector streams the actual Chromium browser and highlights each selected t
 
 The default mode runs automatically. **Pause** lets the current request finish and prevents the next action. Choose **Step by step** to inspect a decision with **Choose next**, then apply it with **Execute choice**. Saved frames can be reviewed while paused without navigating the controlled browser. Starting another task or restarting the server clears this in-memory history.
 
-Chromium runs in its own isolated context. No Python, `uv`, or Browser Harness is needed. The original Python implementation is pinned in [`jev-ultrafast/`](jev-ultrafast/) as a reference submodule.
+Chromium runs in its own isolated context. No Python, `uv`, or Browser Harness is needed. The original Python implementation is available in the [upstream repository](https://github.com/browser-use/jev-ultrafast).
 
 ### Connect your models
 
