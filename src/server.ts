@@ -287,6 +287,10 @@ export function startServer(
               onUpdate: publishState,
             });
             opening = 0;
+            if (shuttingDown) {
+              await agent.close();
+              return json({ error: "The server is shutting down." }, 503);
+            }
             try {
               await (agent.browser as Browser).watchFrames((frame) => {
                 latestFrame = {
@@ -335,18 +339,17 @@ export function startServer(
     url: `http://127.0.0.1:${server.port}`,
     async close() {
       shuttingDown = true;
-      while (busy) await Bun.sleep(20);
-      try {
-        await agent?.close();
-      } finally {
-        for (const viewer of viewers) {
-          try {
-            viewer.close();
-          } catch {}
-        }
-        for (const dispose of subscriptions.values()) dispose();
-        await server.stop(true);
+      for (const viewer of viewers) {
+        try {
+          viewer.close();
+        } catch {}
       }
+      for (const dispose of subscriptions.values()) dispose();
+      await server.stop(true);
+      const deadline = performance.now() + 3000;
+      while (busy && performance.now() < deadline) await Bun.sleep(20);
+      if (busy) await agent?.browser.close();
+      else await agent?.close();
     },
   };
 }

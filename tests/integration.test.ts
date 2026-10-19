@@ -509,6 +509,51 @@ test("inspector reports a dead browser and can start a fresh task", async () => 
   expect((await post("predict")).status).toBe(200);
 });
 
+test("shutdown also closes a browser that finishes opening after the drain deadline", async () => {
+  const models = mockModels();
+  const store = new SettingsStore(await temporary(), {});
+  await store.save(models.settings);
+  const inspector = startServer({ port: 0, settings: store });
+  cleanup.push(() => inspector.close());
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const closed = Promise.withResolvers<void>();
+  const create = Agent.create;
+  let late: Agent | undefined;
+  const capture = spyOn(Agent, "create").mockImplementation(async (...args) => {
+    entered.resolve();
+    await release.promise;
+    late = await create(...args);
+    const close = late.close.bind(late);
+    late.close = async () => {
+      await close();
+      closed.resolve();
+    };
+    return late;
+  });
+  cleanup.push(() => capture.mockRestore());
+  const html = await (await fetch(inspector.url)).text();
+  const token = html.match(/name="demo-token" content="([^"]+)"/)![1]!;
+  const pending = fetch(`${inspector.url}/api/reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Demo-Token": token },
+    body: JSON.stringify({
+      scenario: "custom",
+      url: localSite(),
+      goal: "Find a stay",
+    }),
+  }).catch(() => undefined);
+  try {
+    await entered.promise;
+    await inspector.close();
+  } finally {
+    release.resolve();
+  }
+  await closed.promise;
+  await pending;
+  expect(late!.state.status).toBe("closed");
+}, 10_000);
+
 test("start rejects a missing chat helper before opening a browser", async () => {
   const store = new SettingsStore(await temporary(), {});
   await store.save({ decision: { model: "decision-model" } });

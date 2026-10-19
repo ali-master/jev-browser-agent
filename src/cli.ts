@@ -43,10 +43,24 @@ try {
     });
     console.log(`Jev Browser Agent: ${inspector.url}`);
     let closing = false;
-    const shutdown = async () => {
-      if (closing) return;
+    const shutdown = async (signal: NodeJS.Signals) => {
+      if (closing) process.exit(signal === "SIGINT" ? 130 : 143);
       closing = true;
-      await inspector.close();
+      console.log("Stopping the server… Press Ctrl+C again to force exit.");
+      setTimeout(() => {
+        console.error("Shutdown timed out; exiting.");
+        process.exit(1);
+      }, 5000).unref();
+      try {
+        await inspector.close();
+        // Bun's watcher stays alive after the listener closes.
+        process.exit(0);
+      } catch (error) {
+        console.error(
+          error instanceof Error ? error.message : "Shutdown failed.",
+        );
+        process.exit(1);
+      }
     };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
