@@ -122,6 +122,8 @@ For Clef and D1 Omni, the entire decision prompt must fit in the physical batch.
 
 API compatibility is separate from planning quality. A chat model can return valid JSON while choosing the wrong field or omitting part of the goal. Review its generated checklist and use the bundled demo to evaluate a model before giving it a larger task.
 
+If the inspector reports **“Chat helper could not produce a verifiable checklist”**, it rejected the initial plan and its one repair attempt. The message includes the last validation failure, such as an empty field value, a mismatched control reference, invalid JSON or an output token limit. No action is executed for that rejected plan. Check the **Chat helper** model in **Model settings**: **Test connection** checks API compatibility, not the model's ability to plan a task. A model that repeatedly returns incorrect checks needs to be replaced with a more capable chat model; increasing the decision model's physical batch size does not correct those checks.
+
 </details>
 
 ## Use the library
