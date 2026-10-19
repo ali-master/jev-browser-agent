@@ -109,6 +109,12 @@ function presentation() {
     ? `Step ${state.plan_index + 1} · ${stepTitle(step)}`
     : "Each step is checked against the page.";
   const stages = {
+    verifying: [
+      "VERIFYING GOAL",
+      "Checking the complete result",
+      "Comparing the observed evidence with every requirement in your original task.",
+      "◎",
+    ],
     opening: [
       "OPENING BROWSER",
       "Opening the starting page",
@@ -359,13 +365,34 @@ function render() {
         )
         .join("")
     : '<li class="plan-empty">Your steps will appear when the agent starts.</li>';
-  const activePhase = state.activity?.kind === "writing" ? "acting" : state.activity?.kind;
+  const activePhase =
+    state.activity?.kind === "writing"
+      ? "acting"
+      : state.activity?.kind === "verifying"
+        ? "observing"
+        : state.activity?.kind;
   document
     .querySelectorAll("[data-phase]")
     .forEach((el) => el.classList.toggle("active", el.dataset.phase === activePhase));
   $("result-summary").textContent = state.history.length
     ? `${actionTitle(state.history.at(-1), state.history.at(-1).text)}. ${resultFor(state.history.length)}.`
     : "No actions yet. Choosing an action does not execute it.";
+  $("task-result").hidden = !state.answer;
+  $("answer").textContent = state.answer || "";
+  $("answer-sources").replaceChildren(
+    ...(state.answer ? state.completion_reviews?.at(-1)?.evidence || [] : []).map((source) => {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      link.textContent = source.quote;
+      if (/^https?:\/\//i.test(source.url)) {
+        link.href = source.url;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+      }
+      item.append(link);
+      return item;
+    }),
+  );
   $("step-count").textContent =
     `${state.history.length} actions · ${seconds(state.elapsed_ms || 0)}`;
   $("status").textContent = !connected

@@ -149,7 +149,18 @@ export interface TaskStep {
 export interface Checkpoint extends TaskStep {
   started_at_action: number | null;
   started_fingerprint: string | null;
-  verified: { fingerprint: string; url: string; action_count: number } | null;
+  verified: {
+    fingerprint: string;
+    url: string;
+    action_count: number;
+    evidence?: { title: string; text: string };
+  } | null;
+}
+export interface CompletionReview {
+  complete: boolean;
+  answer: string | null;
+  evidence: { url: string; quote: string }[];
+  missing_steps: TaskStep[];
 }
 export interface AgentState {
   goal: string;
@@ -158,7 +169,7 @@ export interface AgentState {
   history: HistoryEntry[];
   status: Status;
   activity: {
-    kind: "observing" | "planning" | "deciding" | "writing" | "acting";
+    kind: "observing" | "planning" | "deciding" | "writing" | "acting" | "verifying";
     started_at: number;
     action?: Action;
     text?: string;
@@ -166,6 +177,9 @@ export interface AgentState {
   plan: string[];
   plan_index: number;
   checkpoints: Checkpoint[];
+  plan_revisions: { reason: string; checkpoints: Checkpoint[] }[];
+  completion_reviews: CompletionReview[];
+  answer: string | null;
   planning_calls: ModelCall[];
   decisions: (Decision & { fingerprint: string; elapsed_ms: number })[];
   text_calls: (ModelCall & { field: string; value: string | null })[];

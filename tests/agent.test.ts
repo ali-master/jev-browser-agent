@@ -1,7 +1,7 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import { Agent } from "../src/agent.js";
 import { StalePage, fingerprint } from "../src/browser.js";
-import { chatResponse, decisionResponse, page, provider } from "./helpers.js";
+import { chatResponse, completionResponse, decisionResponse, page, provider } from "./helpers.js";
 import type { DecisionRequest, TaskStep } from "../src/types.js";
 
 const servers: Bun.Server<undefined>[] = [];
@@ -21,6 +21,8 @@ function runner(
   const transport = provider(async (request) => {
     if (new URL(request.url).pathname.endsWith("chat/completions")) {
       const body = await request.json();
+      if (body.response_format?.json_schema?.name === "completion_review")
+        return completionResponse(body);
       if (body.messages[0].content.includes("completion checklist")) return chatResponse({ steps });
       textCalls++;
       return chatResponse({ text: "Lisbon" });
@@ -180,6 +182,38 @@ test("completion requires a fresh observation, not just matching stale checkpoin
   expect(agent.state.status).toBe("done");
   expect(agent.state.decisions).toHaveLength(0);
   expect(agent.state.plan_index).toBe(1);
+});
+
+test("a page change during final review never publishes a completed answer", async () => {
+  const { agent, driver } = runner("WAIT", "", 60, [
+    { instruction: "Read Search", checks: [{ kind: "title", includes: "Search" }] },
+  ]);
+  driver.fresh.mockResolvedValueOnce(true).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  await expect(agent.command("predict")).rejects.toBeInstanceOf(StalePage);
+  expect(agent.state.answer).toBeNull();
+  expect(agent.state.status).toBe("ready");
+  expect(driver.act).not.toHaveBeenCalled();
+});
+
+test("repeated missing requirements stop within the review and revision budgets", async () => {
+  const steps = [{ instruction: "Read Search", checks: [{ kind: "title", includes: "Search" }] }];
+  const p = provider(async (request) => {
+    const body = await request.json();
+    return chatResponse(
+      body.response_format.json_schema.name === "completion_review"
+        ? { complete: false, answer: null, evidence: [], missing_steps: steps }
+        : { steps },
+    );
+  });
+  servers.push(p.server);
+  const { driver } = runner();
+  const agent = new Agent(driver, page(), "Read Search", { settings: async () => p.settings });
+  await agent.command("tick");
+  expect(agent.state.status).toBe("blocked");
+  expect(agent.state.completion_reviews).toHaveLength(3);
+  expect(agent.state.plan_revisions).toHaveLength(2);
+  expect(agent.state.answer).toBeNull();
+  expect(driver.act).not.toHaveBeenCalled();
 });
 
 test("concurrent callers cannot execute overlapping steps", async () => {

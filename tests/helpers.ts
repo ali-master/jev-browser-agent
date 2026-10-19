@@ -37,6 +37,17 @@ export function choice(criteria: Record<string, unknown>, selected: string): Cho
 export function chatResponse(output: unknown) {
   return Response.json({ choices: [{ message: { content: JSON.stringify(output) } }] });
 }
+
+export function completionResponse(body: { messages: { content: string }[] }) {
+  const { sources } = JSON.parse(body.messages[1]!.content);
+  const source = sources[0];
+  return chatResponse({
+    complete: true,
+    answer: "The requested task is complete.",
+    evidence: [{ url: source.url, quote: source.title || source.text.slice(0, 80) }],
+    missing_steps: [],
+  });
+}
 export function decisionResponse(body: DecisionRequest, operation = "TYPE_TEXT", target = "1") {
   const head = `${operation.toLowerCase()}_target`;
   return {

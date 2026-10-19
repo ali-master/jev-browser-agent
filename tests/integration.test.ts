@@ -7,7 +7,13 @@ import { Agent } from "../src/agent.js";
 import type { Browser } from "../src/browser.js";
 import { SettingsStore } from "../src/config.js";
 import { startServer } from "../src/server.js";
-import { chatResponse, decisionResponse, fixture, provider } from "./helpers.js";
+import {
+  chatResponse,
+  completionResponse,
+  decisionResponse,
+  fixture,
+  provider,
+} from "./helpers.js";
 import type { DecisionRequest, ElementView } from "../src/types.js";
 
 const cleanup: (() => Promise<unknown> | void)[] = [];
@@ -31,10 +37,14 @@ function localSite() {
 }
 
 function mockModels(beforeDecision?: () => Promise<void>) {
-  const counts = { decisions: 0, text: 0, planning: 0 };
+  const counts = { decisions: 0, text: 0, planning: 0, verification: 0 };
   const model = provider(async (request) => {
     if (new URL(request.url).pathname.endsWith("chat/completions")) {
       const body = await request.json();
+      if (body.response_format?.json_schema?.name === "completion_review") {
+        counts.verification++;
+        return completionResponse(body);
+      }
       if (body.response_format?.type !== "json_schema")
         return Response.json(
           { error: "response_format.type must be json_schema or text" },
@@ -110,7 +120,7 @@ test("real Chromium + HTTP model transport completes a local task with independe
     "SELECT",
     "CLICK",
   ]);
-  expect(models.counts).toEqual({ decisions: 3, text: 1, planning: 1 });
+  expect(models.counts).toEqual({ decisions: 3, text: 1, planning: 1, verification: 1 });
   expect(agent.state.checkpoints.every((step) => step.verified)).toBe(true);
   expect(
     agent.state.decisions.every(
@@ -181,7 +191,7 @@ test("inspector saves private settings and drives a complete task through its co
   await page.waitForFunction(() =>
     document.querySelector("#status")?.textContent?.startsWith("All steps verified"),
   );
-  expect(models.counts).toEqual({ decisions: 3, text: 1, planning: 1 });
+  expect(models.counts).toEqual({ decisions: 3, text: 1, planning: 1, verification: 1 });
   expect(errors).toEqual([]);
   const state = await (await fetch(`${inspector.url}/api/state`)).json();
   expect(state.page.text).toContain("Results: Lisbon / Design");
@@ -258,7 +268,7 @@ test("live inspector shows a pending model call and pauses before executing its 
     await page.waitForFunction(
       () => document.querySelector("#phase-label")?.textContent === "COMPLETE",
     );
-    expect(models.counts).toEqual({ decisions: 3, text: 1, planning: 1 });
+    expect(models.counts).toEqual({ decisions: 3, text: 1, planning: 1, verification: 1 });
     expect((await (await fetch(`${inspector.url}/api/state`)).json()).history).toHaveLength(3);
     expect(errors).toEqual([]);
   } finally {

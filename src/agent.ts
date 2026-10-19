@@ -6,7 +6,7 @@ import type { BrowserDriver, BrowserOptions } from "./browser.js";
 import { SettingsStore } from "./config.js";
 import { actionSpace, choose, fieldContext, fieldText } from "./model.js";
 import { MAX_STEPS } from "./questions.js";
-import { createPlan, updateProgress } from "./plan.js";
+import { createPlan, reviewCompletion, updateProgress } from "./plan.js";
 import type {
   Action,
   AgentState,
@@ -15,6 +15,7 @@ import type {
   ModelCall,
   ModelRole,
   SettingsReader,
+  TaskStep,
 } from "./types.js";
 
 export interface AgentOptions extends BrowserOptions {
@@ -36,6 +37,9 @@ export class Agent {
   private settings: SettingsReader;
   private selection: { fingerprint: string; decision: Decision; action?: Action } | null = null;
   private pendingObservation: { entry: HistoryEntry; fingerprint: string } | null = null;
+  private plannedAt = "";
+  private revisionCount = 0;
+  private reviewCount = 0;
 
   constructor(
     readonly browser: BrowserDriver,
@@ -58,6 +62,9 @@ export class Agent {
       plan: [goal.trim()],
       plan_index: 0,
       checkpoints: [],
+      plan_revisions: [],
+      completion_reviews: [],
+      answer: null,
       planning_calls: [],
       decisions: [],
       text_calls: [],
@@ -179,13 +186,7 @@ export class Agent {
         state.planning_calls,
         this.modelObserver("planning"),
       );
-      state.plan = steps.map((step) => step.instruction);
-      state.checkpoints = steps.map((step) => ({
-        ...step,
-        started_at_action: null,
-        started_fingerprint: null,
-        verified: null,
-      }));
+      this.setRemaining(steps);
     }
     await this.progress();
     if (stopped(state)) return;
@@ -211,7 +212,7 @@ export class Agent {
     };
     state.decisions.push({
       ...state.decision,
-      fingerprint: state.page.fingerprint,
+      fingerprint: observed.fingerprint,
       elapsed_ms: this.elapsed(),
     });
     state.status = "predicted";
@@ -223,9 +224,96 @@ export class Agent {
       throw new StalePage("Page changed before checkpoint verification.");
     state.plan_index = updateProgress(state.checkpoints, state.page, state.history);
     if (state.checkpoints.length && state.plan_index === state.checkpoints.length) {
-      state.status = "done";
+      if (this.reviewCount++ >= 3) {
+        state.status = "blocked";
+        state.stop_reason = {
+          code: "verification_budget",
+          message:
+            "The goal could not be verified within the review budget. Inspect the result and refine the task.",
+        };
+        return;
+      }
+      this.activity("verifying");
+      const review = await reviewCompletion(
+        state.page,
+        state.goal,
+        state.checkpoints,
+        async () => (await this.settings()).text,
+        this.modelObserver("verification"),
+      );
+      state.completion_reviews.push(review);
+      if (!(await this.browser.fresh(state.page)))
+        throw new StalePage("Page changed during the final goal review.");
+      if (review.complete) {
+        state.answer = review.answer;
+        state.status = "done";
+        delete state.stop_reason;
+      } else if (review.missing_steps.length && this.revisionCount < 2) {
+        this.revise("The completion review found missing requirements.", review.missing_steps);
+        await this.progress();
+      } else {
+        state.status = "blocked";
+        state.stop_reason = {
+          code: "unverified_goal",
+          message:
+            "The original goal still lacks observed evidence. Review the remaining requirements before starting again.",
+        };
+      }
       this.pendingText = null;
     }
+  }
+
+  private setRemaining(steps: TaskStep[]) {
+    const completed = this.state.checkpoints
+      .slice(0, this.state.plan_index)
+      .filter((step) => step.verified);
+    this.state.checkpoints = [
+      ...completed,
+      ...steps.map((step) => ({
+        ...step,
+        started_at_action: null,
+        started_fingerprint: null,
+        verified: null,
+      })),
+    ];
+    this.state.plan = this.state.checkpoints.map((step) => step.instruction);
+    this.state.plan_index = completed.length;
+    this.plannedAt = `${this.state.page.document_id}\n${this.state.page.url}`;
+    this.state.status = "ready";
+    this.state.answer = null;
+    delete this.state.stop_reason;
+  }
+
+  private revise(reason: string, steps: TaskStep[]) {
+    this.revisionCount++;
+    this.state.plan_revisions.push({
+      reason,
+      checkpoints: structuredClone(this.state.checkpoints),
+    });
+    this.setRemaining(steps);
+  }
+
+  private async replanAfterNavigation() {
+    const state = this.state;
+    if (
+      this.revisionCount >= 2 ||
+      this.plannedAt === `${state.page.document_id}\n${state.page.url}`
+    )
+      return false;
+    this.activity("planning");
+    const { steps } = await createPlan(
+      state.page,
+      state.goal,
+      async () => (await this.settings()).text,
+      state.planning_calls,
+      this.modelObserver("planning"),
+      {
+        completed: state.checkpoints.slice(0, state.plan_index),
+        remaining: state.checkpoints.slice(state.plan_index),
+      },
+    );
+    this.revise("An observed destination did not match the remaining plan.", steps);
+    return true;
   }
 
   private async act(expectedFingerprint?: string) {
@@ -257,6 +345,13 @@ export class Agent {
         await this.progress();
         return;
       }
+      if (
+        settled.readiness !== "loading" &&
+        !settled.omitted_actions &&
+        !settled.discovery_limited &&
+        (await this.replanAfterNavigation())
+      )
+        return;
       state.status = "blocked";
       state.stop_reason =
         settled.omitted_actions || settled.discovery_limited

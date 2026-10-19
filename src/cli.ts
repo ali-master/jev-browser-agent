@@ -10,7 +10,7 @@ const help = `Jev Browser Agent (Bun)
   jev run --url URL --goal "Task" [--headed] [--max-steps 60] [--record DIR]
 
 Configure Base URL, API key and model in the inspector or .env.
-Settings are read before each model request. DONE is a model claim; verify the page.
+Settings are read before each model step. Completion requires page evidence and a goal review.
 `;
 
 try {
@@ -71,9 +71,11 @@ try {
       console.log(`Final page: ${state.page.url}`);
       console.log(
         state.status === "done"
-          ? "Model reports DONE. Verify the outcome independently."
+          ? "Goal verified against the observed evidence."
           : `Stopped: ${state.status}`,
       );
+      if (state.answer) console.log(state.answer);
+      if (state.stop_reason) console.error(state.stop_reason.message);
       if (cancelled || state.status !== "done") process.exitCode = 1;
     } finally {
       process.off("SIGINT", cancel);
