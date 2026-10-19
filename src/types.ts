@@ -26,6 +26,7 @@ export type Action =
 
 export interface PageState {
   document_id: string;
+  discovery_limited?: boolean;
   url: string;
   title: string;
   text: string;

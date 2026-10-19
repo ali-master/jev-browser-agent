@@ -63,7 +63,7 @@
     "spinbutton",
   ];
   const selector =
-    'a[href],button,input,textarea,select,summary,[contenteditable="true"],' +
+    "a[href],button,input,textarea,select,summary,label,[contenteditable],[onclick]," +
     roles.map((role) => '[role="' + role + '"]').join(",");
   const document_id = String(performance.timeOrigin);
   const scopeSelector =
@@ -88,7 +88,15 @@
     }
     return { scope: labels.join(" / "), context };
   };
+  const control = (e) =>
+    e.tagName === "LABEL" && ["checkbox", "radio"].includes(e.control?.type) ? e.control : e;
+  const customClickable = (e) =>
+    e.hasAttribute("onclick") ||
+    typeof e.onclick === "function" ||
+    (getComputedStyle(e).cursor === "pointer" &&
+      getComputedStyle(e.parentElement || document.body).cursor !== "pointer");
   const role = (e) => {
+    if (control(e) !== e) return control(e).type;
     const explicit = e.getAttribute("role");
     if (roles.includes(explicit)) return explicit;
     if (e.tagName === "BUTTON" || e.tagName === "SUMMARY") return "button";
@@ -102,7 +110,7 @@
       if (e.type === "number") return "spinbutton";
       if (["text", "email", "url", "tel"].includes(e.type)) return "textbox";
     }
-    return null;
+    return customClickable(e) ? "button" : null;
   };
   cache.pageKey = () => [
     performance.timeOrigin,
@@ -117,9 +125,17 @@
   ];
   cache.guard = (e) => {
     if (!e?.isConnected || !visible(e)) return null;
+    const c = control(e);
     const scope = e.closest(scopeSelector) || e.parentElement;
     return [
       identity(e),
+      [
+        identity(c),
+        c.value ?? null,
+        c.checked ?? null,
+        c.matches(":disabled"),
+        c.closest('[inert],[aria-disabled="true"]') !== null,
+      ],
       role(e),
       name(e),
       e.value ?? null,
@@ -146,9 +162,36 @@
     ];
   };
   const actions = [];
-  for (const e of document.querySelectorAll(selector)) {
-    if (!safe(e) || !visible(e) || e.matches(":disabled") || e.closest('[aria-disabled="true"]'))
+  const candidates = new Set(document.querySelectorAll(selector));
+  const candidatesWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+  let candidate,
+    inspected = 0;
+  while (inspected < 5000 && (candidate = candidatesWalker.nextNode())) {
+    inspected++;
+    if (
+      !candidates.has(candidate) &&
+      !candidate.parentElement?.closest(selector) &&
+      visible(candidate) &&
+      customClickable(candidate)
+    )
+      candidates.add(candidate);
+  }
+  const discovery_limited = inspected === 5000 && candidatesWalker.nextNode() !== null;
+  for (const e of candidates) {
+    const c = control(e);
+    if (
+      !safe(c) ||
+      !visible(e) ||
+      c.matches(":disabled") ||
+      c.closest('[inert],[aria-disabled="true"]') ||
+      e.closest('[aria-disabled="true"]')
+    )
       continue;
+    if (e.isContentEditable && e.parentElement?.isContentEditable) continue;
+    if (c !== e && visible(c)) {
+      const box = c.getBoundingClientRect();
+      if (box.width >= 4 && box.height >= 4) continue;
+    }
     const r = e.getBoundingClientRect(),
       x = r.x + r.width / 2,
       y = r.y + r.height / 2,
@@ -166,10 +209,10 @@
     if (rname === "gridcell" && e.querySelector('button,[role="button"]')) continue;
     const base = {
       node: identity(e),
-      ref: `${document_id}:${identity(e)}`,
+      ref: `${document_id}:${identity(c)}`,
       ...fieldScope(e),
-      html_id: e.id,
-      html_name: e.getAttribute("name") || "",
+      html_id: c.id,
+      html_name: c.getAttribute("name") || "",
       role: rname,
       label: name(e) || rname,
       rect: { x: r.x, y: r.y, w: r.width, h: r.height },
@@ -178,7 +221,7 @@
       const value = e.getAttribute("aria-" + key);
       if (value !== null) base[key] = value;
     }
-    if (["checkbox", "radio"].includes(e.type)) base.checked = String(e.checked);
+    if (["checkbox", "radio"].includes(c.type)) base.checked = String(c.checked);
     if (e.tagName === "SELECT") {
       for (const o of e.options)
         if (!o.selected && !o.disabled && !o.closest("optgroup[disabled]"))
@@ -198,8 +241,8 @@
         (["textbox", "searchbox", "spinbutton"].includes(rname) ||
           (rname === "combobox" && ["INPUT", "TEXTAREA"].includes(e.tagName)));
       const value =
-        "value" in e
-          ? String(e.value)
+        "value" in c
+          ? String(c.value)
           : e.isContentEditable || rname === "combobox"
             ? e.innerText.trim()
             : "";
@@ -261,6 +304,7 @@
   actions.push({ id: "wait", kind: "wait", label: "Wait for the page to update" });
   return {
     document_id,
+    discovery_limited,
     url: location.href,
     title: document.title,
     w: innerWidth,

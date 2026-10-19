@@ -228,3 +228,70 @@ test("same-labeled fields expose distinct document identities and bounded form c
   expect(contexts[1]!.field.context).toContain("Recipient");
   expect(contexts[1]!.field.context.length).toBeLessThanOrEqual(600);
 });
+
+test("clicks custom controls and visible labels of hidden radios without duplicate native targets", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<style>.suggestion{cursor:pointer;width:200px;height:30px}</style><div class="suggestion"><span>Suggestion</span></div><label>Radio label<input type="radio" style="opacity:0;width:0;height:0" id="hidden-radio"></label><button><span>Native button</span></button>';window.picks=0;document.querySelector('.suggestion').addEventListener('click',()=>window.picks++);true`,
+  );
+  let state = await browser.observe();
+  const choices = state.actions.filter((a) => a.kind === "click");
+  expect(choices.map((a) => a.label).sort()).toEqual([
+    "Native button",
+    "Radio label",
+    "Suggestion",
+  ]);
+  await browser.act(
+    choices.find((a) => a.label === "Suggestion")!,
+    state,
+  );
+  expect(await browser.evaluate("window.picks")).toBe(1);
+  state = await browser.observe();
+  await browser.act(
+    state.actions.find((a) => a.label === "Radio label")!,
+    state,
+  );
+  state = await browser.observe();
+  expect(await browser.evaluate("document.querySelector('input').checked")).toBe(true);
+  expect(state.actions.find((a) => a.label === "Radio label")).toMatchObject({
+    checked: "true",
+    role: "radio",
+  });
+});
+
+test("hidden radio eligibility is guarded before clicking its label", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<label>Radio<input type="radio" style="opacity:0;width:0;height:0"></label>';true`,
+  );
+  const state = await browser.observe();
+  await browser.evaluate("document.querySelector('input').disabled=true");
+  await expect(
+    browser.act(
+      state.actions.find((a) => a.label === "Radio")!,
+      state,
+    ),
+  ).rejects.toBeInstanceOf(StalePage);
+  expect(await browser.evaluate("document.querySelector('input').checked")).toBe(false);
+});
+
+test("fills all editable attribute forms and excludes false and nested editor targets", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<div contenteditable aria-label="Bare" style="height:30px"><span contenteditable="true">Nested</span></div><div contenteditable="" aria-label="Empty" style="height:30px"></div><div contenteditable="plaintext-only" aria-label="Plain" style="height:30px"></div><div contenteditable="false" aria-label="False">False</div>';true`,
+  );
+  let state = await browser.observe();
+  expect(state.actions.filter((a) => a.kind === "fill").map((a) => a.label)).toEqual([
+    "Bare",
+    "Empty",
+    "Plain",
+  ]);
+  for (const label of ["Bare", "Empty", "Plain"]) {
+    await browser.act(
+      state.actions.find((a) => a.kind === "fill" && a.label === label)!,
+      state,
+      "Updated",
+    );
+    state = await browser.observe();
+    expect(state.actions.find((a) => a.kind === "fill" && a.label === label)).toMatchObject({
+      value: "Updated",
+    });
+  }
+});
