@@ -77,7 +77,22 @@ Open **[127.0.0.1:8766](http://127.0.0.1:8766)**, expand **Model settings**, sav
 
 The inspector streams the actual Chromium browser and highlights each selected target before execution. Follow the task checklist, the last observed result, and the **Activity** filmstrip. **Pages visited** lets you review the journey; **Model details** exposes the decision scores.
 
-The agent pointer follows browser mouse movements, pulses on actions, and shows the direction of smooth scrolling. It stays separate from the page DOM and hides while reviewing an old frame. **Preview each action** adds a pause before execution. Choose **Travel planner · crowded fixture** to exercise offscreen results, **Google Flights · live website** for a real page, or **Your website** for a custom URL. Live sites can show consent dialogs or require controls that the current model cannot handle.
+The agent pointer follows browser mouse movements, pulses on actions, and shows the direction of smooth scrolling. It stays separate from the page DOM and hides while reviewing an old frame. **Preview each action** is off by default; enable it to pause for 1.2 seconds before each action. Pointer animation remains enabled in the demo.
+
+Choose a scenario, review its editable goal, then press **Start task**:
+
+| Scenario                          | What it exercises                                                                   |
+| --------------------------------- | ----------------------------------------------------------------------------------- |
+| Travel planner / crowded          | Text input, category and cancellation filters, search, scrolling, result navigation |
+| Flights · open search             | Cookie consent and the Google Flights search page                                   |
+| Flights · one-way route           | LHR → LIS, airport suggestions, departure date, one-way results                     |
+| Flights · round trip for two      | AMS ↔ FCO, two adults, departure and return dates                                   |
+| Flights · nonstop comparison      | JFK → LAX, nonstop filter, compare two visible fares                                |
+| Wikipedia · linked research       | Search, read a section, follow a related article, cite both pages                   |
+| Hacker News · compare discussions | Open two discussions, collect visible facts, compare with citations                 |
+| GitHub · release research         | Open the latest stable Bun release, read fixes, inspect its source tag              |
+
+Flight dates are generated 45 days after the inspector page loads, with a return seven days later. These are editable task presets, not site-specific automation scripts. Flights stop at results; research tasks do not sign in or post. Live completion depends on the models and the site's current controls. **Your website** accepts a custom URL and goal.
 
 The default mode runs automatically. **Pause** lets the current request finish and prevents the next action. Choose **Step by step** to inspect a decision with **Choose next**, then apply it with **Execute choice**. Saved frames can be reviewed while paused without navigating the controlled browser. Starting another task or restarting the server clears this in-memory history.
 
@@ -193,6 +208,21 @@ jev serve --port 8766
 
 Use `--port` or the `PORT` environment variable to change its port.
 
+CLI logs go to stderr; the final answer goes to stdout, so they can be saved separately:
+
+```sh
+jev run --url https://en.wikipedia.org/wiki/Main_Page \
+  --goal 'Find and open the article about Gödel’s incompleteness theorems.' \
+  --log-level debug --log-detail high --color never \
+  > answer.txt 2> agent.log
+```
+
+The same flags work with `jev serve`; tasks started in the inspector emit their stages and timing summaries to the server's terminal.
+
+`--log-level` accepts `error`, `warn`, `info` (default), `debug`, or `trace`. `--log-detail` accepts `low` for start/result summaries, `normal` (default) for stages and actions, or `high` for individual stage timings and token counts. Detail does not override the level filter; use `trace` with `high` for all diagnostics. Warnings and errors remain visible at low detail.
+
+`--color auto|always|never` defaults to `auto`. Auto detects a terminal and respects `NO_COLOR`, `FORCE_COLOR`, and `TERM=dumb`; an explicit flag wins. Logs include page changes, model latency, decisions, executed actions, checkpoint progress, stop reasons, and total model versus remaining elapsed time. Raw prompts, field values, API keys and URL queries are not included by the reporter. Debug adds usage and timing summaries; trace adds token counts. Page labels and error messages can still contain site content, so treat saved logs as private.
+
 ## Why it moves
 
 - **One request for operation and target.** Speculative target questions share the same structured observation.
@@ -202,6 +232,10 @@ Use `--port` or the `PORT` environment variable to change its port.
 - **Bind identities.** Decisions retain their original observation; fields carry document/node references and nearby form context. Dropdowns select the exact observed option even when values are duplicated.
 - **Verify after input.** Log confirmed actions before observing their results. Completed visible fields are rechecked; a regression reopens the affected checkpoint.
 - **Reuse text carefully.** An interrupted text result is reused only when the entire helper input and connection settings are unchanged.
+- **Skip redundant generation.** A uniquely bound field can reuse an exact value already present in the user's goal and active checklist. Passwords, ambiguous bindings, and inferred values still use the helper. Browser freshness and input validation still run.
+- **Send evidence once.** Final reviews deduplicate identical sources and avoid repeating their text inside checkpoint metadata; distinct observations and ordered checks remain available.
+
+To diagnose speed, run the CLI with `--log-level debug --log-detail high`: stage timings separate observation, planning, decisions, writing, input and final verification. `model_ms` sums physical model requests; `other_ms` is the remaining run time, including browser work and any pauses. These totals exclude initial browser startup. Recording adds screenshots and disk writes; use `--record` when you need that evidence.
 
 Only observations and model requests are retried. Browser mutations are never replayed after an uncertain error. Default limits are 60 browser actions and 120 decision cycles. Three unchanged actions stop the loop; three consecutive unchanged waits trigger a bounded page recheck and, on a ready page, a repair of the remaining checklist. WAIT is then removed from an unchanged ready page's choices. Checklist revisions share a two-revision budget; waiting never counts as completion. Transport retries allow at most three attempts for known transient failures. Invalid chat output gets one schema repair. A missing field value (`text: null`) stops with a clear reason and never types an invented value.
 
