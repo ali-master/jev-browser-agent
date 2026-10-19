@@ -1,4 +1,4 @@
-<img src="assets/social-preview.png" alt="Jev Browser Agent — A browser that chooses. Typed decisions. Real browser actions." width="100%" />
+<img src="assets/logo.svg" alt="Jev Browser Agent logo" width="128" height="128" />
 
 # Jev Browser Agent
 
