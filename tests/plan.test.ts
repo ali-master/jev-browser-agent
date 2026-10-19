@@ -24,6 +24,19 @@ test("nullable checklist and review schemas work with string-only type parsers",
         ));
   const p = provider(async (request) => {
     const body = await request.json();
+    if (body.response_format.json_schema.name === "browser_checklist") {
+      const alternatives =
+        body.response_format.json_schema.schema.properties.steps.items
+          .properties.checks.items.anyOf;
+      expect(
+        alternatives.every(
+          (branch: any) => Object.keys(branch.properties)[0] === "kind",
+        ),
+      ).toBe(true);
+      for (const branch of alternatives)
+        if (branch.properties.ref)
+          expect(branch.properties.ref).toEqual({ type: "null" });
+    }
     if (!acceptsTypes(body.response_format.json_schema.schema))
       return Response.json(
         { error: "'type' must be a string" },
@@ -90,6 +103,85 @@ const click = (action: string): HistoryEntry => ({
   usage: {},
   executed_ms: 1,
   elapsed_ms: 2,
+});
+
+test("an offscreen consent button stays unbound until it is observed", async () => {
+  const state = page();
+  state.actions = [
+    {
+      id: "e1",
+      kind: "click",
+      label: "Language: English",
+      node: 1,
+      ref: "consent:1",
+      value: "",
+      role: "button",
+    },
+    { id: "scroll_down", kind: "scroll", label: "Scroll down", delta: 560 },
+  ];
+  state.scroll.height = 1200;
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(JSON.parse(body.messages[1].content).observation.scroll).toEqual(
+      state.scroll,
+    );
+    return chatResponse({
+      steps: [
+        {
+          instruction: "Reject cookies and open flight search",
+          checks: [
+            {
+              kind: "action",
+              label: "Reject all",
+              action: "click",
+              ref: null,
+              scope: null,
+            },
+            { kind: "url", includes: "google.com/travel/flights" },
+          ],
+        },
+      ],
+    });
+  });
+  servers.push(p.server);
+  const { steps } = await createPlan(
+    state,
+    "Reject optional cookies and open Google Flights",
+    async () => p.endpoint,
+  );
+  expect(steps[0]!.checks[0]).toMatchObject({ label: "Reject all", ref: null });
+});
+
+test("a destination in a consent redirect URL does not verify arrival", () => {
+  const state = page();
+  const destination = "https://www.google.com/travel/flights";
+  state.url = `https://consent.google.com/m?continue=${destination}?hl%3Den`;
+  for (const includes of [
+    destination,
+    "google.com/travel/flights",
+    "/travel/flights",
+  ]) {
+    const steps = checkpoints([{ kind: "url", includes }]);
+    expect(updateProgress(steps, state, [])).toBe(0);
+    state.url = `${destination}?hl=en`;
+    expect(updateProgress(steps, state, [])).toBe(1);
+    state.url = `https://consent.google.com/m?continue=${destination}?hl%3Den`;
+  }
+  state.url = `${destination}?hl=en#search`;
+  expect(
+    updateProgress(
+      checkpoints([{ kind: "url", includes: "/travel/flights?hl=en" }]),
+      state,
+      [],
+    ),
+  ).toBe(1);
+  expect(
+    updateProgress(
+      checkpoints([{ kind: "url", includes: "#search" }]),
+      state,
+      [],
+    ),
+  ).toBe(1);
 });
 
 test.each([
@@ -419,6 +511,33 @@ test("scoped control checks verify only their field and invalidate replaced same
   expect(updateProgress(steps, state, [])).toBe(0);
 });
 
+test("scrolling or SPA navigation retains verified controls that are no longer visible", () => {
+  const state = page();
+  Object.assign(state.actions[0]!, {
+    ref: "fixture-document:10",
+    value: "Lisbon",
+  });
+  const steps = checkpoints(
+    [
+      {
+        kind: "value",
+        label: "Search",
+        ref: "fixture-document:10",
+        equals: "Lisbon",
+      },
+    ],
+    [{ kind: "title", includes: "Destination" }],
+  );
+  expect(updateProgress(steps, state, [])).toBe(1);
+  state.actions = [];
+  state.scroll.y = 560;
+  expect(updateProgress(steps, state, [])).toBe(1);
+  expect(steps[0]!.verified).not.toBeNull();
+  state.url += "#destination";
+  state.title = "Destination";
+  expect(updateProgress(steps, state, [])).toBe(2);
+});
+
 test("action text checks must come from the goal, not invented counts or messages", () => {
   const plan = {
     steps: [
@@ -436,6 +555,57 @@ test("action text checks must come from the goal, not invented counts or message
   );
   expect(
     validatePlan(plan, 'Click Search and wait for "3 places"'),
+  ).toHaveLength(1);
+});
+
+test("submission rejects an invented future query URL instead of waiting for it forever", () => {
+  const url = "https://example.test/?destination=Lisbon&category=Design";
+  const plan = {
+    steps: [
+      {
+        instruction: "Submit search",
+        checks: [
+          { kind: "action", label: "Go", action: "click" },
+          { kind: "url", includes: url },
+        ],
+      },
+    ],
+  };
+  expect(() => validatePlan(plan, "Find Lisbon", page())).toThrow(
+    "guesses a future query URL",
+  );
+  expect(validatePlan(plan, `Open ${url}`, page())).toHaveLength(1);
+});
+
+test("observed form submission uses field evidence instead of a guessed page title", () => {
+  const state = page();
+  Object.assign(state.actions[2]!, { submits_form: true });
+  const step = {
+    instruction: "Submit search",
+    checks: [
+      { kind: "action", label: "Go", action: "click" },
+      { kind: "title", includes: "Lisbon results" },
+    ],
+  };
+  expect(() => validatePlan({ steps: [step] }, "Find Lisbon", state)).toThrow(
+    "submits an observed form",
+  );
+  expect(
+    validatePlan(
+      {
+        steps: [
+          {
+            ...step,
+            checks: [
+              step.checks[0],
+              { kind: "value", label: "Search", equals: "Lisbon" },
+            ],
+          },
+        ],
+      },
+      "Find Lisbon",
+      state,
+    ),
   ).toHaveLength(1);
 });
 

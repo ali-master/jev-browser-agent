@@ -3,6 +3,7 @@ import { CURRENT_STEP, NEXT_ACTION, TARGET, TEXT_VALUE } from "./questions";
 import type {
   Action,
   ChoiceAnswer,
+  CompletionCheck,
   Decision,
   DecisionRequest,
   ElementView,
@@ -316,6 +317,7 @@ export function actionSpace(actions: Action[]) {
         checked: action.checked,
         selected: action.selected,
         expanded: action.expanded,
+        submits_form: action.submits_form,
         operations: [],
       };
       if (action.kind === "select") element.options = [];
@@ -344,8 +346,47 @@ export async function choose(
   endpoint: Endpoint,
   allowDone = true,
   observe?: ModelObserver,
+  checks?: CompletionCheck[],
 ): Promise<Decision> {
   const { elements, targets, controls } = actionSpace(page.actions);
+  const controlChecks = checks?.filter((check) => "label" in check) ?? [];
+  const missingControls: string[] = [];
+  if (controlChecks.length) {
+    const allowed = new Set<string>();
+    for (const check of controlChecks) {
+      const matches = elements.filter(
+        (element) =>
+          element.label.trim().replace(/\s+/g, " ") ===
+            check.label.trim().replace(/\s+/g, " ") &&
+          (!check.ref || element.ref === check.ref) &&
+          (!check.scope ||
+            element.scope?.trim().replace(/\s+/g, " ") ===
+              check.scope.trim().replace(/\s+/g, " ")),
+      );
+      if (!matches.length) missingControls.push(check.label);
+      if (matches.length !== 1) continue;
+      const element = matches[0]!;
+      if (
+        (check.kind === "value" && element.value === check.equals) ||
+        (check.kind === "checked" && element.checked === String(check.equals))
+      )
+        continue;
+      const operations: TargetOperation[] =
+        check.kind === "value" ? ["TYPE_TEXT", "SELECT"] : ["CLICK"];
+      for (const operation of operations)
+        for (const [index, action] of Object.entries(targets[operation] ?? {}))
+          if (index.split(":")[0] === element.index) allowed.add(action.id);
+    }
+    for (const operation of Object.keys(targets) as TargetOperation[]) {
+      const candidates = Object.fromEntries(
+        Object.entries(targets[operation]!).filter(([, action]) =>
+          allowed.has(action.id),
+        ),
+      );
+      if (Object.keys(candidates).length) targets[operation] = candidates;
+      else delete targets[operation];
+    }
+  }
   const labels = {
     CLICK:
       "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
@@ -356,13 +397,31 @@ export async function choose(
   const operations: Record<string, string> = {};
   for (const operation of Object.keys(targets) as TargetOperation[])
     operations[operation] = labels[operation];
-  for (const [operation, action] of Object.entries(controls))
-    operations[operation] = action.label;
+  const recent = history.slice(-3);
+  const exhaustedWait =
+    (page.readiness ?? "ready") === "ready" &&
+    recent.length === 3 &&
+    recent.every(
+      (entry) => entry.kind === "wait" && entry.page_changed === false,
+    );
+  for (const [operation, action] of Object.entries(controls)) {
+    if (operation === "WAIT" && exhaustedWait) continue;
+    operations[operation] =
+      operation === "SCROLL_DOWN"
+        ? "Reveal more controls below the current viewport by scrolling down."
+        : operation === "SCROLL_UP"
+          ? "Reveal more controls above the current viewport by scrolling up."
+          : action.label;
+  }
   if (allowDone) operations.DONE = "Every requirement is visibly satisfied.";
   operations.BLOCKED = "No supported operation can progress.";
-  const instructions = allowDone
-    ? `User goal: ${goal}\n${NEXT_ACTION}`
-    : `Current step: ${goal}\n${CURRENT_STEP}`;
+  const instructions =
+    (allowDone
+      ? `User goal: ${goal}\n${NEXT_ACTION}`
+      : `Current step: ${goal}\n${CURRENT_STEP}`) +
+    (missingControls.length && (controls.SCROLL_DOWN || controls.SCROLL_UP)
+      ? "\nThe required control is not yet visible. Scrolling is available and must be tried before declaring this control unavailable."
+      : "");
   const request: DecisionRequest = {
     model: endpoint.model,
     state: {
@@ -371,6 +430,10 @@ export async function choose(
         readiness: page.readiness ?? "ready",
         omitted_actions: page.omitted_actions,
         discovery_limited: page.discovery_limited ?? false,
+        controls_scope:
+          "Only the current viewport is observed; more controls may be outside it.",
+        scroll: { ...page.scroll, viewport_height: page.h },
+        pending_controls_not_visible: missingControls,
       },
       elements,
       recent_actions: history

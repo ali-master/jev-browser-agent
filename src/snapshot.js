@@ -293,6 +293,21 @@
         });
     }
   }
+  const editableForms = new Set(
+    actions
+      .filter((action) => action.kind === "fill" || action.kind === "select")
+      .map((action) => cache.nodes.get(action.node)?.form)
+      .filter(Boolean),
+  );
+  for (const action of actions) {
+    const element = cache.nodes.get(action.node);
+    if (
+      action.kind === "click" &&
+      element?.type === "submit" &&
+      editableForms.has(element.form)
+    )
+      action.submits_form = true;
+  }
   const words = [],
     walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   const range = document.createRange();

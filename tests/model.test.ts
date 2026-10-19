@@ -241,6 +241,87 @@ test("an unfinished checkpoint gets focused instructions and no terminal DONE ch
   expect(result.choice).toBe("e3");
 });
 
+test.each(["Free cancellation", " Free   cancellation "])(
+  "checkpoint %s excludes unrelated cards and keeps observed indices",
+  async (label) => {
+    const state = page();
+    state.actions.push({
+      id: "refund",
+      kind: "click",
+      node: 30,
+      label: "Free cancellation",
+      role: "checkbox",
+      checked: "false",
+      ref: "fixture-document:30",
+      scope: "Search filters",
+    });
+    const p = provider(async (request) => {
+      const body = await request.json();
+      expect(Object.keys(body.questions.click_target.criteria)).toEqual(["3"]);
+      expect(body.questions.type_text_target).toBeUndefined();
+      return Response.json(decisionResponse(body, "CLICK", "3"));
+    });
+    servers.push(p.server);
+    const decision = await choose(
+      state,
+      "Enable Free cancellation",
+      [],
+      p.endpoint,
+      false,
+      undefined,
+      [
+        {
+          kind: "checked",
+          label,
+          equals: true,
+          ref: "fixture-document:30",
+          scope: " Search   filters ",
+        },
+      ],
+    );
+    expect(decision.choice).toBe("refund");
+  },
+);
+
+test("an offscreen checkpoint target offers scrolling instead of unrelated clicks", async () => {
+  const state = page();
+  state.actions.push({
+    id: "scroll_down",
+    kind: "scroll",
+    label: "Scroll down",
+    delta: 560,
+  });
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(body.questions.click_target).toBeUndefined();
+    expect(body.questions.operation.criteria.CLICK).toBeUndefined();
+    expect(body.questions.operation.criteria.SCROLL_DOWN).toBeDefined();
+    expect(body.state.observation.scroll).toEqual({
+      ...state.scroll,
+      viewport_height: state.h,
+    });
+    expect(body.state.observation.pending_controls_not_visible).toHaveLength(1);
+    expect(body.questions.operation.instructions).toContain(
+      "Scrolling is available and must be tried",
+    );
+    return Response.json(decisionResponse(body, "SCROLL_DOWN", ""));
+  });
+  servers.push(p.server);
+  const decision = await choose(
+    state,
+    "Open the requested result",
+    [],
+    p.endpoint,
+    false,
+    undefined,
+    [
+      { kind: "action", label: "View requested result", action: "click" },
+      { kind: "title", includes: "Requested result" },
+    ],
+  );
+  expect(decision.choice).toBe("scroll_down");
+});
+
 test.each([
   ["non-JSON", "Thinking: Lisbon"],
   ["extra keys", '{"text":"Lisbon","extra":true}'],
@@ -433,7 +514,7 @@ test("network failures retry within a fixed request budget", async () => {
 test("decision input includes observation readiness and truncation", async () => {
   const p = provider(async (request) => {
     const body = await request.json();
-    expect(body.state.observation).toEqual({
+    expect(body.state.observation).toMatchObject({
       readiness: "loading",
       omitted_actions: 17,
       discovery_limited: true,

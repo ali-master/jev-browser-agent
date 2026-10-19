@@ -8,7 +8,7 @@ import {
   page,
   provider,
 } from "./helpers";
-import type { DecisionRequest, TaskStep } from "../src/types";
+import type { Action, DecisionRequest, TaskStep } from "../src/types";
 
 const servers: Bun.Server<undefined>[] = [];
 afterEach(async () => {
@@ -50,7 +50,7 @@ function runner(
   const driver = {
     fresh: mock(async () => true),
     observe: mock(async () => structuredClone(state)),
-    act: mock(async () => {}),
+    act: mock(async (_action: Action) => {}),
     close: mock(async () => {}),
   };
   const agent = new Agent(driver, state, "Find hotels in Lisbon", {
@@ -75,6 +75,27 @@ test("consumes a stale decision before any mutation or text request", async () =
   expect(driver.act).not.toHaveBeenCalled();
   expect(textCalls()).toBe(0);
   expect(agent.state.decision).toBeNull();
+});
+
+test("only the active step binds a control identity from the current document", async () => {
+  const steps: TaskStep[] = ["Lisbon", "Porto"].map((value) => ({
+    instruction: `Enter ${value} in Search`,
+    checks: [
+      { kind: "value", label: "Search", equals: value, ref: null, scope: null },
+    ],
+  }));
+  const { agent } = runner("TYPE_TEXT", "1", 60, steps);
+  Object.assign(agent.state.page.actions[0]!, {
+    ref: "fixture-document:10",
+    scope: "Search form",
+  });
+  await agent.command("predict");
+  expect(agent.state.checkpoints[0]!.checks[0]).toMatchObject({
+    ref: "fixture-document:10",
+    scope: "Search form",
+  });
+  expect(agent.state.checkpoints[1]!.checks[0]).toMatchObject({ ref: null });
+  expect(steps[0]!.checks[0]).toMatchObject({ ref: null });
 });
 
 test("publishes execution stages without letting viewer failures retry browser actions", async () => {
@@ -155,13 +176,192 @@ test("a document navigation during prediction only reobserves", async () => {
   expect(agent.state.status).toBe("ready");
 });
 
-test("WAIT does not trigger no-progress protection but is bounded by the action budget", async () => {
-  const { agent } = runner("WAIT", "", 4);
-  for (let i = 0; i < 4; i++) await agent.command("tick");
+test("a permanently loading page stops after three unchanged waits, not sixty", async () => {
+  const { agent, driver } = runner("WAIT");
+  agent.state.page.readiness = "loading";
+  driver.observe.mockImplementation(async () =>
+    structuredClone(agent.state.page),
+  );
+  for (let i = 0; i < 3; i++) await agent.command("tick");
   expect(agent.state.status).toBe("ready");
-  await expect(agent.command("tick")).rejects.toThrow("action budget");
+  await agent.command("tick");
   expect(agent.state.status).toBe("blocked");
-  expect(agent.state.history).toHaveLength(4);
+  expect(agent.state.stop_reason?.code).toBe("page_not_ready");
+  expect(agent.state.history).toHaveLength(3);
+  expect(agent.state.decisions).toHaveLength(3);
+  expect(agent.state.answer).toBeNull();
+});
+
+test("unchanged WAIT repairs a wrong title check using the actual field value", async () => {
+  let plans = 0;
+  const p = provider(async (request) => {
+    const body = await request.json();
+    if (new URL(request.url).pathname.endsWith("systemone"))
+      return Response.json(decisionResponse(body, "WAIT", ""));
+    if (body.response_format.json_schema.name === "completion_review")
+      return completionResponse(body);
+    plans++;
+    if (plans > 1) {
+      const context = JSON.parse(body.messages[1].content);
+      expect(context.progress.reason).toContain("Three WAIT");
+      expect(context.progress.recent_actions).toHaveLength(3);
+    }
+    return chatResponse({
+      steps: [
+        {
+          instruction: "Type Lisbon in Search",
+          checks:
+            plans === 1
+              ? [{ kind: "title", includes: "Lisbon" }]
+              : [{ kind: "value", label: "Search", equals: "Lisbon" }],
+        },
+      ],
+    });
+  });
+  servers.push(p.server);
+  const { driver } = runner();
+  const current = page();
+  Object.assign(current.actions[0]!, { value: "Lisbon" });
+  current.fingerprint = fingerprint(current);
+  driver.observe.mockImplementation(async () => structuredClone(current));
+  const agent = new Agent(driver, current, "Type Lisbon in Search", {
+    settings: async () => p.settings,
+  });
+  for (let i = 0; i < 4; i++) await agent.command("tick");
+  expect(agent.state.status).toBe("done");
+  expect(plans).toBe(2);
+  expect(agent.state.plan_revisions).toHaveLength(1);
+  expect(agent.state.history).toHaveLength(3);
+  expect(agent.state.checkpoints[0]!.checks[0]!.kind).toBe("value");
+  expect(agent.state.checkpoints[0]!.verified).not.toBeNull();
+  expect(agent.state.completion_reviews).toHaveLength(1);
+});
+
+test("an unrepaired checklist cannot resume WAIT forever or falsely complete", async () => {
+  const p = provider(async (request) => {
+    const body = await request.json();
+    if (new URL(request.url).pathname.endsWith("systemone"))
+      return Response.json(
+        decisionResponse(
+          body,
+          "WAIT" in body.questions.operation.criteria ? "WAIT" : "BLOCKED",
+          "",
+        ),
+      );
+    return chatResponse({
+      steps: [
+        {
+          instruction: "Read the requested result",
+          checks: [{ kind: "title", includes: "Never appears" }],
+        },
+      ],
+    });
+  });
+  servers.push(p.server);
+  const { driver } = runner();
+  const agent = new Agent(driver, page(), "Read the requested result", {
+    settings: async () => p.settings,
+  });
+  let ticks = 0;
+  for await (const state of agent.run()) {
+    expect(++ticks).toBeLessThanOrEqual(6);
+    expect(state.status).not.toBe("done");
+  }
+  expect(agent.state.status).toBe("blocked");
+  expect(agent.state.history).toHaveLength(3);
+  expect(agent.state.plan_revisions).toHaveLength(2);
+  expect(agent.state.answer).toBeNull();
+});
+
+test("a replaced upcoming control is replanned without losing verified field evidence", async () => {
+  let plans = 0;
+  const current = page();
+  Object.assign(current.actions[0]!, { ref: "fixture-document:10" });
+  Object.assign(current.actions[2]!, { ref: "fixture-document:20" });
+  const p = provider(async (request) => {
+    const body = await request.json();
+    if (new URL(request.url).pathname.endsWith("systemone"))
+      return Response.json(
+        decisionResponse(
+          body,
+          body.questions.operation.instructions.startsWith("Current step: Type")
+            ? "TYPE_TEXT"
+            : "CLICK",
+          body.questions.operation.instructions.startsWith("Current step: Type")
+            ? "1"
+            : "2",
+        ),
+      );
+    if (body.response_format.json_schema.name === "completion_review")
+      return completionResponse(body);
+    if (!body.messages[0].content.includes("completion checklist"))
+      return chatResponse({ text: "Lisbon" });
+    plans++;
+    if (plans === 2)
+      expect(
+        JSON.parse(body.messages[1].content).progress.completed,
+      ).toHaveLength(1);
+    return chatResponse({
+      steps: [
+        ...(plans === 1
+          ? [
+              {
+                instruction: "Type Lisbon",
+                checks: [
+                  {
+                    kind: "value",
+                    label: "Search",
+                    equals: "Lisbon",
+                    ref: "fixture-document:10",
+                  },
+                ],
+              },
+            ]
+          : []),
+        {
+          instruction: "Click Go",
+          checks: [
+            {
+              kind: "action",
+              label: "Go",
+              action: "click",
+              ref: plans === 1 ? "fixture-document:20" : "fixture-document:99",
+            },
+            { kind: "title", includes: "Completed" },
+          ],
+        },
+      ],
+    });
+  });
+  servers.push(p.server);
+  const { driver } = runner();
+  driver.observe.mockImplementation(async () => structuredClone(current));
+  driver.act.mockImplementation(async (action) => {
+    if (action.kind === "fill") {
+      Object.assign(current.actions[0]!, { value: "Lisbon" });
+      Object.assign(current.actions[2]!, {
+        node: 99,
+        ref: "fixture-document:99",
+      });
+    } else current.title = "Completed";
+    current.fingerprint = fingerprint(current);
+  });
+  const agent = new Agent(
+    driver,
+    structuredClone(current),
+    "Type Lisbon and submit",
+    { settings: async () => p.settings },
+  );
+  await agent.command("tick");
+  await agent.command("tick");
+  expect(agent.state.status).toBe("done");
+  expect(agent.state.history.map((entry) => entry.ref)).toEqual([
+    "fixture-document:10",
+    "fixture-document:99",
+  ]);
+  expect(agent.state.checkpoints).toHaveLength(2);
+  expect(agent.state.plan_revisions).toHaveLength(1);
+  expect(plans).toBe(2);
 });
 
 test("repeated predictions and unchanged mutations are independently bounded", async () => {
@@ -355,6 +555,28 @@ test("recovered post-action observations participate in the three-repeat guard",
   expect(agent.state.status).toBe("blocked");
   expect(agent.state.stop_reason?.code).toBe("no_progress");
   expect(driver.act).toHaveBeenCalledTimes(3);
+});
+
+test("re-rendering identical controls is not progress even when node identities change", async () => {
+  const { agent, driver } = runner("CLICK", "2");
+  driver.observe.mockImplementation(async () => {
+    const current = structuredClone(agent.state.page);
+    for (const action of current.actions)
+      if ("node" in action) {
+        action.node += 100;
+        action.ref = `fixture-document:${action.node}`;
+      }
+    current.fingerprint = fingerprint(current);
+    return current;
+  });
+  for (let i = 0; i < 3; i++) await agent.command("tick");
+  expect(agent.state.status).toBe("blocked");
+  expect(agent.state.history.map((entry) => entry.page_changed)).toEqual([
+    false,
+    false,
+    false,
+  ]);
+  expect(agent.state.stop_reason?.code).toBe("no_progress");
 });
 
 test("a failed recovery stops without replaying an already consumed mutation", async () => {

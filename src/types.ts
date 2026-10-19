@@ -19,6 +19,7 @@ interface Target {
   checked?: string;
   selected?: string;
   expanded?: string;
+  submits_form?: boolean;
   rect?: { x: number; y: number; w: number; h: number };
 }
 export type Action =
@@ -66,6 +67,7 @@ export interface ElementView {
   checked?: string;
   selected?: string;
   expanded?: string;
+  submits_form?: boolean;
   operations: TargetOperation[];
   options?: { index: string; label: string; value: string }[];
 }

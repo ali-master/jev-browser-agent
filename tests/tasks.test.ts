@@ -188,11 +188,13 @@ test("unseen destination controls replan only remaining work and retain prior ev
   expect(result.agent.state.status).toBe("done");
 });
 
-test("a wrong first waypoint never satisfies the ordered task", async () => {
+test("a wrong first waypoint is rejected before navigation", async () => {
   const result = await task("wrong-waypoint");
-  expect(result.failure).toBeUndefined();
-  expect(result.agent.state.status).toBe("blocked");
-  expect(result.visits).toEqual(["/", "/js"]);
+  expect(result.failure).toBeInstanceOf(Error);
+  expect(String(result.failure)).toContain("Invalid typed decision");
+  expect(result.agent.state.status).toBe("error");
+  expect(result.visits).toEqual(["/"]);
+  expect(result.agent.state.history).toHaveLength(0);
   expect(result.agent.state.checkpoints[0]!.verified).toBeNull();
   expect(result.agent.state.answer).toBeNull();
 });

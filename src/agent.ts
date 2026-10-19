@@ -28,6 +28,17 @@ export interface AgentOptions extends BrowserOptions {
 }
 const stopped = (state: AgentState) =>
   ["done", "blocked", "error", "closed"].includes(state.status);
+const observedContent = (page: AgentState["page"]) =>
+  JSON.stringify({
+    url: page.url,
+    title: page.title,
+    text: page.text,
+    scroll: page.scroll,
+    readiness: page.readiness,
+    elements: actionSpace(page.actions).elements.map(
+      ({ ref: _ref, ...element }) => element,
+    ),
+  });
 
 export class Agent {
   readonly state: AgentState;
@@ -44,11 +55,11 @@ export class Agent {
   } | null = null;
   private pendingObservation: {
     entry: HistoryEntry;
-    fingerprint: string;
+    content: string;
   } | null = null;
-  private plannedAt = "";
   private revisionCount = 0;
   private reviewCount = 0;
+  private lastWaitRecovery = 0;
 
   constructor(
     readonly browser: BrowserDriver,
@@ -224,6 +235,57 @@ export class Agent {
     }
     await this.progress();
     if (stopped(state)) return;
+    await this.recoverWaiting();
+    if (stopped(state)) return;
+    const current = state.checkpoints[state.plan_index]!;
+    const elements = actionSpace(state.page.actions).elements;
+    // Future steps may revisit the same label in a different document.
+    for (const check of current.checks) {
+      if (!("label" in check) || check.ref) continue;
+      const matches = elements.filter(
+        (element) =>
+          element.label.trim().replace(/\s+/g, " ") ===
+            check.label.trim().replace(/\s+/g, " ") &&
+          (!check.scope ||
+            element.scope?.trim().replace(/\s+/g, " ") ===
+              check.scope.trim().replace(/\s+/g, " ")),
+      );
+      if (matches.length === 1 && matches[0]!.ref) {
+        check.ref = matches[0]!.ref;
+        check.scope = matches[0]!.scope || null;
+      }
+    }
+    const replaced = current.checks.some(
+      (check) =>
+        "ref" in check &&
+        check.ref &&
+        !elements.some((element) => element.ref === check.ref) &&
+        elements.some(
+          (element) =>
+            element.label.trim().replace(/\s+/g, " ") ===
+              check.label.trim().replace(/\s+/g, " ") &&
+            (!check.scope ||
+              element.scope?.trim().replace(/\s+/g, " ") ===
+                check.scope.trim().replace(/\s+/g, " ")),
+        ),
+    );
+    if (replaced) {
+      if (
+        !(await this.replanRemaining(
+          "The unfinished step references a control that was replaced when the page updated. Use its current observed identity and preserve completed requirements.",
+        ))
+      ) {
+        state.status = "blocked";
+        state.stop_reason = {
+          code: "no_progress",
+          message:
+            "The remaining checklist references replaced controls and could not be repaired within the revision budget. Start a fresh task from the current page.",
+        };
+        return;
+      }
+      await this.progress();
+      if (stopped(state)) return;
+    }
     if (state.decisions.length >= this.maxSteps * 2) {
       state.status = "blocked";
       throw new Error("Reached the model-call budget.");
@@ -233,11 +295,12 @@ export class Agent {
     const observed = structuredClone(state.page);
     state.decision = await choose(
       observed,
-      state.plan[state.plan_index]!,
+      `${state.plan[state.plan_index]}\nRequired completion evidence: ${JSON.stringify(state.checkpoints[state.plan_index]!.checks)}`,
       state.history,
       config.decision,
       false,
       this.modelObserver("decision"),
+      state.checkpoints[state.plan_index]!.checks,
     );
     this.selection = {
       fingerprint: observed.fingerprint,
@@ -324,7 +387,6 @@ export class Agent {
     ];
     this.state.plan = this.state.checkpoints.map((step) => step.instruction);
     this.state.plan_index = completed.length;
-    this.plannedAt = `${this.state.page.document_id}\n${this.state.page.url}`;
     this.state.status = "ready";
     this.state.answer = null;
     delete this.state.stop_reason;
@@ -339,13 +401,9 @@ export class Agent {
     this.setRemaining(steps);
   }
 
-  private async replanAfterNavigation() {
+  private async replanRemaining(reason: string) {
     const state = this.state;
-    if (
-      this.revisionCount >= 2 ||
-      this.plannedAt === `${state.page.document_id}\n${state.page.url}`
-    )
-      return false;
+    if (this.revisionCount >= 2) return false;
     this.activity("planning");
     const { steps } = await createPlan(
       state.page,
@@ -356,13 +414,58 @@ export class Agent {
       {
         completed: state.checkpoints.slice(0, state.plan_index),
         remaining: state.checkpoints.slice(state.plan_index),
+        reason,
+        recent_actions: state.history.slice(-6),
       },
     );
-    this.revise(
-      "An observed destination did not match the remaining plan.",
-      steps,
-    );
+    this.revise(reason, steps);
     return true;
+  }
+
+  private async recoverWaiting() {
+    const state = this.state;
+    const recent = state.history.slice(-3);
+    if (
+      state.history.length === this.lastWaitRecovery ||
+      recent.length !== 3 ||
+      !recent.every(
+        (entry) => entry.kind === "wait" && entry.page_changed === false,
+      )
+    )
+      return;
+    this.lastWaitRecovery = state.history.length;
+    this.activity("observing");
+    const before = state.page;
+    state.page = this.browser.settle
+      ? await this.browser.settle(
+          before,
+          this.options.screenshots || state.record,
+        )
+      : await this.browser.observe(this.options.screenshots || state.record);
+    await this.progress();
+    if (
+      stopped(state) ||
+      observedContent(state.page) !== observedContent(before)
+    )
+      return;
+    if (
+      (state.page.readiness ?? "ready") === "ready" &&
+      (await this.replanRemaining(
+        "Three WAIT actions produced no page change. Recheck the unfinished step against the current control values. Repair incorrect completion checks; typing/selecting require value checks and toggles require checked checks. Preserve every original requirement, including submission and opening the result.",
+      ))
+    ) {
+      await this.progress();
+      return;
+    }
+    state.status = "blocked";
+    state.stop_reason = {
+      code:
+        (state.page.readiness ?? "ready") === "ready"
+          ? "no_progress"
+          : "page_not_ready",
+      message:
+        "The page did not change after three waits and a bounded recheck. Review the unfinished checklist step or retry when the page is ready; the goal has not been marked complete.",
+    };
   }
 
   private async act(expectedFingerprint?: string) {
@@ -409,7 +512,9 @@ export class Agent {
         settled.readiness !== "loading" &&
         !settled.omitted_actions &&
         !settled.discovery_limited &&
-        (await this.replanAfterNavigation())
+        (await this.replanRemaining(
+          "No supported operation could satisfy the current step. Check whether its completion criteria match the observed controls and destination; revise only the remaining requirements.",
+        ))
       )
         return;
       state.status = "blocked";
@@ -521,7 +626,7 @@ export class Agent {
       elapsed_ms: state.elapsed_ms,
     };
     state.history.push(entry);
-    this.pendingObservation = { entry, fingerprint: page.fingerprint };
+    this.pendingObservation = { entry, content: observedContent(page) };
     this.activity("observing", action, text);
     await this.record(false);
     this.acceptObservation(
@@ -533,17 +638,16 @@ export class Agent {
   private acceptObservation(page: AgentState["page"]) {
     this.state.page = page;
     if (!this.pendingObservation) return;
-    const { entry, fingerprint } = this.pendingObservation;
-    entry.page_changed = page.fingerprint !== fingerprint;
+    const { entry, content } = this.pendingObservation;
+    entry.page_changed = observedContent(page) !== content;
     entry.url = page.url;
     entry.elapsed_ms = this.elapsed();
     this.pendingObservation = null;
     const repeated = this.state.history.slice(-3);
     this.state.status =
       repeated.length === 3 &&
-      repeated.every(
-        (item) => item.page_changed === false && item.kind !== "wait",
-      )
+      repeated.every((item) => item.page_changed === false) &&
+      repeated.some((item) => item.kind !== "wait")
         ? "blocked"
         : "ready";
     if (this.state.status === "blocked")
