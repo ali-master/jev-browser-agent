@@ -9,6 +9,7 @@ import {
 } from "bun:test";
 import type { CDPSession } from "playwright";
 import { Browser, StalePage, fingerprint } from "../src/browser";
+import type { AgentPointer } from "../src/browser";
 import { fixture, page } from "./helpers";
 import { fieldContext } from "../src/model";
 
@@ -31,6 +32,151 @@ beforeEach(async () => {
 afterEach(async () => {
   await browser?.close();
 });
+
+test("animates real mouse movement before one click even if the pointer viewer throws", async () => {
+  await browser.close();
+  const pointers: AgentPointer[] = [];
+  browser = await Browser.create(`http://127.0.0.1:${server.port}`, {
+    showPointer: true,
+    onPointer(pointer) {
+      pointers.push(pointer);
+      throw new Error("Viewer gone");
+    },
+  });
+  await browser.evaluate(
+    `window.mouseLog=[];for(const type of ['mousemove','mousedown','mouseup','click']) document.addEventListener(type,e=>window.mouseLog.push({type,x:e.clientX,y:e.clientY,trusted:e.isTrusted}));true`,
+  );
+  const state = await browser.observe();
+  const action = state.actions.find((a) => a.label === "Search hotels")!;
+  await browser.act(action, state);
+  const log =
+    await browser.evaluate<
+      { type: string; x: number; y: number; trusted: boolean }[]
+    >("window.mouseLog");
+  expect(log.filter((e) => e.type === "mousemove").length).toBeGreaterThan(3);
+  expect(
+    new Set(log.filter((e) => e.type === "mousemove").map((e) => e.x)).size,
+  ).toBeGreaterThan(3);
+  expect(log.filter((e) => e.type === "click")).toHaveLength(1);
+  expect(log.every((e) => e.trusted)).toBe(true);
+  expect(await browser.evaluate("window.submits")).toBe(1);
+  expect(pointers.at(-1)?.phase).toBe("release");
+  expect(pointers.some((p) => p.phase === "press")).toBe(true);
+  expect(log.findIndex((e) => e.type === "mousedown")).toBeGreaterThan(3);
+});
+
+test("a target moved by hover is reobserved instead of clicking its old coordinates", async () => {
+  await browser.close();
+  browser = await Browser.create(`http://127.0.0.1:${server.port}`, {
+    showPointer: true,
+    onPointer() {},
+  });
+  await browser.evaluate(
+    `document.querySelector('#search').addEventListener('mouseenter',e=>{e.target.style.transform='translateY(100px)'},{once:true});true`,
+  );
+  const state = await browser.observe();
+  await expect(
+    browser.act(
+      state.actions.find((a) => a.label === "Search hotels")!,
+      state,
+    ),
+  ).rejects.toBeInstanceOf(StalePage);
+  expect(await browser.evaluate("window.submits")).toBe(0);
+}, 15000);
+
+test("observation tolerates a transient missing document body during navigation", async () => {
+  await browser.evaluate(
+    `document.body.remove();setTimeout(()=>{const body=document.createElement('body');body.innerHTML='<button>Arrived</button>';document.documentElement.appendChild(body)},650);true`,
+  );
+  const state = await browser.observe();
+  expect(state.actions.some((action) => action.label === "Arrived")).toBe(true);
+  expect(state.readiness).toBe("ready");
+});
+
+test("visible wheel gestures scroll in both directions and report their actual origin", async () => {
+  await browser.close();
+  const pointers: AgentPointer[] = [];
+  browser = await Browser.create(`http://127.0.0.1:${server.port}`, {
+    showPointer: true,
+    onPointer(p) {
+      pointers.push(p);
+    },
+  });
+  await browser.evaluate(
+    `document.body.style.minHeight='2500px';window.wheels=[];document.addEventListener('wheel',e=>window.wheels.push({delta:e.deltaY,x:e.clientX,y:e.clientY,trusted:e.isTrusted}));true`,
+  );
+  let state = await browser.observe();
+  await browser.act(
+    state.actions.find((a) => a.id === "scroll_down")!,
+    state,
+  );
+  state = await browser.observe();
+  expect(state.scroll.y).toBeGreaterThan(400);
+  await browser.act(
+    state.actions.find((a) => a.id === "scroll_up")!,
+    state,
+  );
+  state = await browser.observe();
+  expect(state.scroll.y).toBeLessThan(10);
+  const wheels =
+    await browser.evaluate<
+      { delta: number; x: number; y: number; trusted: boolean }[]
+    >("window.wheels");
+  expect(wheels.filter((w) => w.delta > 0).length).toBeGreaterThan(1);
+  expect(wheels.filter((w) => w.delta < 0).length).toBeGreaterThan(1);
+  expect(wheels.every((w) => w.trusted)).toBe(true);
+  const gestures = pointers.filter((p) => p.phase === "scroll");
+  expect(gestures.map((p) => p.deltaY)).toEqual([560, -560]);
+  expect(gestures[0]!.x).toBe(wheels[0]!.x);
+  expect(gestures[0]!.y).toBe(wheels[0]!.y);
+});
+
+test.each([undefined, false])(
+  "pointer visualization is opt-in: showPointer=%j",
+  async (showPointer) => {
+    await browser.close();
+    const pointers: AgentPointer[] = [];
+    browser = await Browser.create(`http://127.0.0.1:${server.port}`, {
+      showPointer,
+      onPointer: (pointer) => pointers.push(pointer),
+    });
+    await browser.evaluate("document.body.style.minHeight='2500px';true");
+    const session = (browser as unknown as { session: CDPSession }).session;
+    const send = spyOn(session, "send");
+    try {
+      let state = await browser.observe();
+      await browser.act(
+        state.actions.find((a) => a.label === "Search hotels")!,
+        state,
+      );
+      expect(await browser.evaluate("window.submits")).toBe(1);
+      state = await browser.observe();
+      await browser.act(
+        state.actions.find((a) => a.id === "scroll_down")!,
+        state,
+      );
+      expect((await browser.observe()).scroll.y).toBeGreaterThan(400);
+      const inputs = send.mock.calls.filter(
+        ([method]) => method === "Input.dispatchMouseEvent",
+      );
+      expect(
+        inputs.filter(
+          ([, params]) =>
+            params && "type" in params && params.type === "mouseMoved",
+        ),
+      ).toHaveLength(2);
+      expect(
+        inputs.filter(
+          ([, params]) =>
+            params && "type" in params && params.type === "mouseWheel",
+        ),
+      ).toHaveLength(1);
+      expect(pointers).toEqual([]);
+    } finally {
+      send.mockRestore();
+    }
+  },
+);
 
 test("streams actual browser paints and navigation, then detaches without input", async () => {
   const frames: { image: string; url: string }[] = [];
@@ -64,6 +210,9 @@ test("streams actual browser paints and navigation, then detaches without input"
 
 test("observes native controls, types text, selects an observed option and submits once", async () => {
   let state = await browser.observe(true);
+  expect(
+    state.actions.find((action) => action.label === "Search hotels"),
+  ).toMatchObject({ submits_form: true });
   expect(state.screenshot?.length).toBeGreaterThan(100);
   expect(
     state.actions

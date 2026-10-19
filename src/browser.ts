@@ -23,6 +23,19 @@ export interface BrowserDriver {
 export interface BrowserOptions {
   headless?: boolean;
   cdpUrl?: string;
+  /** Enable animated pointer events for an onPointer viewer. Defaults to false. */
+  showPointer?: boolean;
+  onPointer?: (pointer: AgentPointer) => void;
+}
+export interface AgentPointer {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  url: string;
+  phase: "move" | "press" | "release" | "scroll" | "idle";
+  label: string;
+  deltaY?: number;
 }
 
 export function fingerprint(page: PageState): string {
@@ -52,10 +65,12 @@ export class Browser implements BrowserDriver {
   private observed = false;
   private screenshotRequest: Promise<string> | null = null;
   private stopWatching: (() => Promise<void>) | null = null;
+  private pointer = { x: 24, y: 24 };
   private constructor(
     private browser: PlaywrightBrowser,
     private context: BrowserContext,
     private session: CDPSession,
+    private onPointer?: BrowserOptions["onPointer"],
   ) {}
 
   static async create(
@@ -67,7 +82,12 @@ export class Browser implements BrowserDriver {
     try {
       browser = options.cdpUrl
         ? await chromium.connectOverCDP(options.cdpUrl, { noDefaults: true })
-        : await chromium.launch({ headless: options.headless ?? true });
+        : await chromium.launch({
+            headless: options.headless ?? true,
+            // The CLI owns shutdown; Playwright still cleans child processes on exit.
+            handleSIGINT: false,
+            handleSIGTERM: false,
+          });
     } catch {
       throw new Error(
         "Cannot open Chromium. Run `bun run browser:install` or check BROWSER_CDP_URL.",
@@ -89,7 +109,12 @@ export class Browser implements BrowserDriver {
         waitUntil: "domcontentloaded",
         timeout: 30_000,
       });
-      return new Browser(browser, context, session);
+      return new Browser(
+        browser,
+        context,
+        session,
+        options.showPointer ? options.onPointer : undefined,
+      );
     } catch {
       try {
         await context?.close();
@@ -164,7 +189,7 @@ export class Browser implements BrowserDriver {
         if (!(error instanceof StalePage)) throw error;
       }
     }
-    for (let attempt = 0; attempt < 10; attempt++) {
+    for (let attempt = 0; attempt < 30; attempt++) {
       try {
         const state = await this.evaluate<PageState | null>(READ_STATE);
         if (!state) throw new StalePage("Document is navigating.");
@@ -181,8 +206,8 @@ export class Browser implements BrowserDriver {
         if (screenshot) await this.capture(state);
         return state;
       } catch (error) {
-        if (!(error instanceof StalePage) || attempt === 9) throw error;
-        await Bun.sleep(20);
+        if (!(error instanceof StalePage) || attempt === 29) throw error;
+        await Bun.sleep(100);
       }
     }
     throw new StalePage("Page did not settle.");
@@ -269,17 +294,30 @@ export class Browser implements BrowserDriver {
     if (!(await this.fresh(page, action)))
       throw new StalePage("Page changed since this decision. Observe again.");
     if (action.kind === "wait") {
-      await Bun.sleep(100);
+      await Bun.sleep(300);
       return;
     }
     if (action.kind === "scroll") {
-      await this.session.send("Input.dispatchMouseEvent", {
-        type: "mouseWheel",
-        x: 550,
-        y: 650,
-        deltaX: 0,
-        deltaY: action.delta,
-      });
+      await this.movePointer({ x: page.w / 2, y: page.h * 0.8 }, page, action);
+      if (!(await this.fresh(page)))
+        throw new StalePage(
+          "Page changed while moving the pointer. Observe again.",
+        );
+      this.showPointer(page, action, "scroll");
+      try {
+        const frames = this.onPointer ? 8 : 1;
+        for (let i = 0; i < frames; i++) {
+          await this.session.send("Input.dispatchMouseEvent", {
+            type: "mouseWheel",
+            ...this.pointer,
+            deltaX: 0,
+            deltaY: action.delta / frames,
+          });
+          if (frames > 1) await Bun.sleep(35);
+        }
+      } finally {
+        this.showPointer(page, action, "idle");
+      }
     } else {
       if (!Number.isSafeInteger(action.node))
         throw new Error("Invalid observed node.");
@@ -295,18 +333,24 @@ export class Browser implements BrowserDriver {
           "color",
         ].includes(action.input_type ?? "");
       const expected = [page.page_key, page.guards[String(action.node)]];
-      const target = await this.evaluate<{
-        x: number;
-        y: number;
-        invalid?: boolean;
-      } | null>(
-        `(action => {
+      const resolveTarget = (
+        apply: boolean,
+        point?: { x: number; y: number },
+      ) =>
+        this.evaluate<{
+          x: number;
+          y: number;
+          invalid?: boolean;
+        } | null>(
+          `(action => {
         const c=window.__jevFast, e=c?.nodes.get(action.node);
         if (!e?.isConnected || JSON.stringify([c.pageKey(),c.guard(e)])!==${JSON.stringify(JSON.stringify(expected))}) return null;
         if (e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') || !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
         if (action.kind==='fill' && (e.readOnly || e.getAttribute('aria-readonly')==='true')) return null;
         const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
         if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight || !e.contains(document.elementFromPoint(x,y))) return null;
+        const point=${JSON.stringify(point ?? null)};
+        if (point && (Math.abs(x-point.x)>1 || Math.abs(y-point.y)>1)) return null;
         if (${nativeFill}) {
           if (e.tagName!=='INPUT' || e.type!==action.input_type) return null;
           const value=${JSON.stringify(text ?? "")}, probe=document.createElement('input');
@@ -316,36 +360,57 @@ export class Browser implements BrowserDriver {
           if (!probe.value || !probe.validity.valid ||
             (e.type==='range' && (!Number.isFinite(Number(value)) || probe.valueAsNumber!==Number(value))) ||
             (e.type==='color' && !/^#[0-9a-f]{6}$/i.test(value))) return {x,y,invalid:true};
-          e.value=probe.value;
-          e.dispatchEvent(new Event('input',{bubbles:true}));
-          e.dispatchEvent(new Event('change',{bubbles:true}));
+          if (${apply}) {
+            e.value=probe.value;
+            e.dispatchEvent(new Event('input',{bubbles:true}));
+            e.dispatchEvent(new Event('change',{bubbles:true}));
+          }
         }
         if (action.kind==='select') {
           const option=e.options?.[action.option_index];
           if (e.tagName!=='SELECT' || !Number.isSafeInteger(action.option_index) || !option || option!==c.nodes.get(action.option_node) || option.value!==action.value || option.disabled || option.closest('optgroup[disabled]')) return null;
-          e.selectedIndex=action.option_index;
-          e.dispatchEvent(new Event('input',{bubbles:true}));
-          e.dispatchEvent(new Event('change',{bubbles:true}));
+          if (${apply}) {
+            e.selectedIndex=action.option_index;
+            e.dispatchEvent(new Event('input',{bubbles:true}));
+            e.dispatchEvent(new Event('change',{bubbles:true}));
+          }
         }
         return {x,y};
       })(${JSON.stringify(action)})`,
-        action.kind === "select" || nativeFill,
-      );
+          apply && (action.kind === "select" || nativeFill),
+        );
+      const target = await resolveTarget(false);
       if (!target)
         throw new StalePage("Target changed or is covered. Observe again.");
       if (target.invalid)
         throw new Error(
           "Invalid native input value or constraint; nothing entered.",
         );
+      await this.movePointer(target, page, action);
+      // Hover can move, cover or replace the target; never click the old position.
+      const current = await resolveTarget(true, target);
+      if (!current)
+        throw new StalePage(
+          "Target changed while moving the pointer. Observe again.",
+        );
+      if (current.invalid)
+        throw new Error("Native input constraints changed; nothing entered.");
       if (action.kind !== "select" && !nativeFill) {
         // CDP inputs are never retried: a rejected response can follow a successful mutation.
         for (const type of ["mousePressed", "mouseReleased"] as const) {
           await this.session.send("Input.dispatchMouseEvent", {
             type,
-            ...target,
+            x: current.x,
+            y: current.y,
             button: "left",
             clickCount: 1,
           });
+          this.showPointer(
+            page,
+            action,
+            type === "mousePressed" ? "press" : "release",
+          );
+          if (type === "mousePressed" && this.onPointer) await Bun.sleep(90);
         }
         if (action.kind === "fill") {
           const focused = await this.evaluate<boolean>(
@@ -370,9 +435,66 @@ export class Browser implements BrowserDriver {
           });
           await this.session.send("Input.insertText", { text: text! });
         }
+      } else {
+        this.showPointer(page, action, "release");
       }
     }
     this.afterInput = action;
+  }
+
+  private showPointer(
+    page: PageState,
+    action: Action,
+    phase: AgentPointer["phase"],
+  ) {
+    try {
+      this.onPointer?.({
+        ...this.pointer,
+        w: page.w,
+        h: page.h,
+        url: page.url,
+        phase,
+        label: action.label,
+        ...(action.kind === "scroll" ? { deltaY: action.delta } : {}),
+      });
+    } catch {
+      // Viewer failures must never interrupt or replay browser input.
+    }
+  }
+
+  private async movePointer(
+    target: { x: number; y: number },
+    page: PageState,
+    action: Action,
+  ) {
+    const from = this.pointer;
+    const frames = this.onPointer ? 12 : 1;
+    const moves: Promise<unknown>[] = [];
+    let failure: unknown;
+    for (let i = 1; i <= frames; i++) {
+      if (failure) break;
+      const t = i / frames;
+      const ease = t * t * (3 - 2 * t);
+      this.pointer = {
+        x: from.x + (target.x - from.x) * ease,
+        y: from.y + (target.y - from.y) * ease,
+      };
+      // Keep the animation clock independent of Chromium's compositor acknowledgements.
+      moves.push(
+        this.session
+          .send("Input.dispatchMouseEvent", {
+            type: "mouseMoved",
+            ...this.pointer,
+          })
+          .catch((error) => {
+            failure ??= error;
+          }),
+      );
+      this.showPointer(page, action, "move");
+      if (frames > 1) await Bun.sleep(25);
+    }
+    await Promise.all(moves);
+    if (failure) throw failure;
   }
 
   async watchFrames(onFrame: (frame: { image: string; url: string }) => void) {

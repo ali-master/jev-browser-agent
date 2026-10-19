@@ -1,7 +1,7 @@
 export { Agent } from "./agent";
 export type { AgentOptions } from "./agent";
 export { Browser, StalePage, fingerprint } from "./browser";
-export type { BrowserDriver, BrowserOptions } from "./browser";
+export type { AgentPointer, BrowserDriver, BrowserOptions } from "./browser";
 export { SettingsStore } from "./config";
 export {
   actionSpace,
