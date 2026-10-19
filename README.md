@@ -4,7 +4,7 @@
 
 **A browser agent with a dynamic, indexed action space. Built for Bun.**
 
-Give it a URL and one goal. A typed decision model picks an operation and an observed element. A chat helper turns the goal into a checklist and writes field text when needed. The agent checks the page after each action and finishes when every checkpoint is verified.
+Give it a URL and one goal. A typed decision model picks an operation and an observed element. A chat helper turns the goal into a checklist and writes field text when needed. The agent checks the page after each action, reviews the complete goal against observed evidence, and returns a sourced result.
 
 A TypeScript rewrite of [Jev Ultrafast](https://github.com/browser-use/jev-ultrafast), with a live browser inspector, observable progress, and switchable local or cloud model connections.
 
@@ -45,12 +45,14 @@ page → element table → operation                 │
                                           ↓
                              fresh page → verify checkpoints
                                           ↓
-                             all verified → DONE
+                             all verified → review original goal
+                                             ↓
+                            missing steps ← review → sourced answer + DONE
 ```
 
-Operation and target questions share **one network round trip**. If the operation is `CLICK`, only `click_target` can execute. The chat helper is called for the initial checklist and, later, for `TYPE_TEXT` values.
+Operation and target questions share **one logical request**. If the operation is `CLICK`, only `click_target` can execute. The chat helper creates the checklist, generates `TYPE_TEXT` values, revises remaining steps when necessary, and reviews the final result. Transient transport failures can retry a model request.
 
-**Completion comes from observed checkpoints.** `DONE` is excluded from the decision model's choices during an Agent run. Field values, checked states, navigation and other page evidence must satisfy the checklist before the agent reports success. A selected action or a high model score does not establish completion.
+**Completion requires checkpoints and a goal review.** `DONE` is excluded from the decision model's choices during an Agent run. Field values, checked states, navigation and other page evidence must satisfy the checklist. The final review checks the original goal for omitted requirements and supplies an answer with quotes and URLs from observed pages. Unobserved citations are rejected. A selected action or a high model score does not establish completion.
 
 There are no site-specific action scripts or prepared field strings in the policy. Model output never becomes a selector, coordinate, shell command, or executable JavaScript.
 
@@ -67,7 +69,7 @@ cp .env.example .env
 bun start
 ```
 
-Open **[127.0.0.1:8766](http://127.0.0.1:8766)**, expand **Model settings**, and save both connections. Choose **Travel planner**, then **Start task**:
+Open **[127.0.0.1:8766](http://127.0.0.1:8766)**, expand **Model settings**, save both connections and use **Check saved connections**. This sends small real requests to test typed choices and structured chat output, including `null`. It checks protocol readiness, not task-solving ability. Choose **Travel planner**, then **Start task**:
 
 > Find a Design stay in Lisbon with Free cancellation and open Casa Flora.
 
@@ -79,10 +81,10 @@ Chromium runs in its own isolated context. No Python, `uv`, or Browser Harness i
 
 ### Connect your models
 
-| Connection     | Endpoint                          | What it does                                                                                                        |
-| -------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Decision model | `POST {baseUrl}/systemone`        | Chooses typed operations and targets; requires a Jev / System One compatible decision model                         |
-| Chat helper    | `POST {baseUrl}/chat/completions` | Creates the checklist and field text; requires an OpenAI-compatible chat model with `json_schema` structured output |
+| Connection     | Endpoint                          | What it does                                                                                                                              |
+| -------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Decision model | `POST {baseUrl}/systemone`        | Chooses typed operations and targets; requires a Jev / System One compatible decision model                                               |
+| Chat helper    | `POST {baseUrl}/chat/completions` | Creates/revises the checklist, field text and final review; requires an OpenAI-compatible chat model with `json_schema` structured output |
 
 Both models are needed for every task, including tasks that do not type. A regular chat model cannot replace a System One decision model. The two connections can share an LM Studio server or use separate local and cloud providers.
 
@@ -98,9 +100,9 @@ TEXT_MODEL_API_KEY=
 TEXT_MODEL=your-loaded-chat-model
 ```
 
-Use the **base URL**, including `/v1` when required, without `/systemone` or `/chat/completions`. Local servers may accept empty keys. For cloud connections, set the provider's HTTPS base URL, API key and model identifier independently for each role. The application sends explicit JSON schemas for both chat requests and validates the returned values.
+Use the **base URL**, including `/v1` when required, without `/systemone` or `/chat/completions`. Local servers may accept empty keys. For cloud connections, set the provider's HTTPS base URL, API key and model identifier independently for each role. The application sends explicit JSON schemas for chat requests and validates the returned values. Nullable strings use `anyOf` for compatibility with local schema parsers.
 
-Settings are read **before every model request**, in this order:
+Settings are read **before every model step and schema-repair request**, in this order. Transport retries keep that request's connection and payload:
 
 ```text
 .jev/settings.json → .env → process environment
@@ -137,6 +139,8 @@ for await (const state of agent.run()) {
 }
 
 console.log(agent.state.checkpoints);
+console.log(agent.state.answer);
+console.log(agent.snapshot().usage);
 ```
 
 `Agent.create` reads the same model settings as the inspector. `await using` closes the owned browser context when execution leaves the scope. Library callers can provide a `settings` callback, `cdpUrl`, `maxSteps`, or `recordDir` through the third argument.
@@ -158,10 +162,15 @@ Omit `--headed` to run headlessly. `--record` saves state and screenshots for in
 - **No screenshots in the decision loop.** The model receives visible controls and page text. Browser frames serve the inspector and recordings.
 - **One browser call per snapshot.** Read controls, names, values and visible text together, retaining references to the observed DOM nodes.
 - **Validate before input.** Recheck the document, field values and target context. Resolve current geometry and reject covered controls before acting.
+- **Bind identities.** Decisions retain their original observation; fields carry document/node references and nearby form context. Dropdowns select the exact observed option even when values are duplicated.
 - **Verify after input.** Log confirmed actions before observing their results. Completed visible fields are rechecked; a regression reopens the affected checkpoint.
 - **Reuse text carefully.** An interrupted text result is reused only when the entire helper input and connection settings are unchanged.
 
-Only observations and transient model HTTP failures are retried. Browser mutations are never replayed after an uncertain error. Default limits are 60 browser actions and 120 decision cycles; repeated unchanged non-wait actions stop the loop.
+Only observations and model requests are retried. Browser mutations are never replayed after an uncertain error. Default limits are 60 browser actions and 120 decision cycles; three unchanged non-wait actions stop the loop. Transport retries allow at most three attempts for known transient failures. Invalid chat output gets one schema repair. A missing field value (`text: null`) stops with a clear reason and never types an invented value.
+
+Loading/empty observations and a proposed `BLOCKED` state receive a bounded wait of about one second. Snapshot failure can recover the observation of a consumed action, without executing it again. Screenshot capture has its own one-second deadline; a missing image does not discard the DOM observation. Incomplete coverage and loading are distinguished from an unsupported step in `stop_reason`.
+
+After reaching an unexpected page, the helper can revise the remaining steps while preserving completed evidence. At most two revisions and three final goal reviews are allowed. A final review that finds missing requirements adds those steps within the same budget; otherwise the run stops without claiming completion.
 
 ## Run usage and cost
 
@@ -189,16 +198,17 @@ These numbers are an example, not provider prices. Each request captures its con
 | [snapshot.js](src/snapshot.js)                      | Atomic DOM observation, indexed controls and freshness guards |
 | [browser.ts](src/browser.ts)                        | Playwright/CDP connection, input and browser frames           |
 | [config.ts](src/config.ts)                          | Reloadable connections and private settings storage           |
+| [usage.ts](src/usage.ts)                            | Reported tokens, physical requests and configured-rate costs  |
 | [server.ts](src/server.ts) / [static/](src/static/) | Local inspector, live progress and activity review            |
 | [cli.ts](src/cli.ts)                                | Inspector and headless/headed commands                        |
 
 ## Evidence and limits
 
-Tests exercise local browser fixtures and mock model endpoints. They independently check field values, selections and submission counts, along with the model protocol, stale-page handling and premature-completion guards. These checks validate the application; they do not measure a real model's reasoning quality.
+Tests exercise local browser fixtures and mock model endpoints. They independently check field values, exact dropdown selections, submission counts and multi-page waypoint order, along with model protocols, stale-page handling and premature-completion guards. The task suite includes omitted requirements, unexpected destinations and invented answer citations. These checks validate the application; they do not measure a real model's reasoning quality.
 
-**The checklist's coverage still depends on the chat model.** Deterministic checks establish whether its proposed requirements match observed page evidence. They cannot prove that the checklist includes every part of an arbitrary goal, or that an unseen server-side effect succeeded. Review the checklist and final page for consequential tasks. A valid model action can still be the wrong action.
+**Goal coverage and answer interpretation still depend on the chat model.** Deterministic checks validate control identities, check types and observed citations. The separate final review reduces missed requirements but cannot prove semantic completeness for an arbitrary goal or an unseen server-side effect. Stored completion evidence includes up to 3,000 characters per checkpoint. A valid model action can still be the wrong action.
 
-The DOM reader handles common HTML and ARIA controls. Frames, shadow roots, canvas, uploads, popup tabs, nested scrolling and arbitrary keyboard widgets remain outside this MVP. Password and file inputs are excluded. Ambiguous duplicate control labels fail verification. Workflows that deliberately replace earlier requested values need a narrower goal.
+The DOM reader handles common HTML/ARIA controls, native date/time/range/color fields, editable variants, labels for hidden checkbox/radio controls, and bounded discovery of custom click targets. Discovery scans at most 5,000 extra DOM nodes and reports truncation. Native values are checked against type, min/max and step constraints before input. Frames, shadow roots, canvas, uploads, popup tabs, nested scrolling and arbitrary keyboard widgets remain outside this MVP. Password and file inputs are excluded. Duplicate labels need matching references or scope to verify. Workflows that deliberately replace earlier requested values need a narrower goal.
 
 The inspector binds to `127.0.0.1` and checks Host, Origin and a per-process request token. Exported traces and screenshots can contain page content and generated field values. Keep them private; `.env`, `.jev/` and `artifacts/` are ignored by Git.
 
