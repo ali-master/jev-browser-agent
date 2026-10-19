@@ -5,6 +5,35 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 
+test.each(["always", "never"])(
+  "CLI sends formatted diagnostics to stderr: color=%s",
+  async (color) => {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        new URL("../src/cli.ts", import.meta.url).pathname,
+        "run",
+        "--log-level",
+        "error",
+        "--log-detail",
+        "low",
+        "--color",
+        color,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    expect(code).toBe(1);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("Supply --url and --goal");
+    expect(stderr.includes("\x1b[")).toBe(color === "always");
+  },
+);
+
 async function startCli(watch: boolean, modelUrl = "http://127.0.0.1:1/v1") {
   const reservation = Bun.serve({
     hostname: "127.0.0.1",
@@ -118,12 +147,15 @@ test.each([false, true])(
     const before = performance.now();
     child.kill("SIGINT");
     if (force) {
-      const reader = child.stdout.getReader();
-      const stopping = await reader.read();
+      const reader = child.stderr.getReader();
+      let stopping = "";
+      while (!stopping.includes("Stopping the server")) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        stopping += new TextDecoder().decode(chunk.value);
+      }
       reader.releaseLock();
-      expect(new TextDecoder().decode(stopping.value)).toContain(
-        "Stopping the server",
-      );
+      expect(stopping).toContain("Stopping the server");
       child.kill("SIGINT");
     }
     expect(await child.exited).toBe(force ? 130 : 0);

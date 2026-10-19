@@ -5,6 +5,7 @@ import { SettingsStore, object } from "./config";
 import { MAX_STEPS } from "./questions";
 import { checkModels } from "./model";
 import { scenarios, scenarioOptions } from "./scenarios";
+import type { AgentState } from "./types";
 
 const staticRoot = new URL("./static/", import.meta.url);
 const headers = {
@@ -22,7 +23,12 @@ const files: Record<string, [string, string]> = {
 };
 
 export function startServer(
-  options: { port?: number; settings?: SettingsStore; cdpUrl?: string } = {},
+  options: {
+    port?: number;
+    settings?: SettingsStore;
+    cdpUrl?: string;
+    onUpdate?: (state: AgentState) => void;
+  } = {},
 ) {
   const store = options.settings ?? new SettingsStore();
   const token = crypto.randomUUID();
@@ -97,6 +103,13 @@ export function startServer(
     for (const viewer of viewers) send(viewer, event, value);
   };
   const publishState = () => {
+    if (agent) {
+      try {
+        options.onUpdate?.(agent.state);
+      } catch {
+        /* Diagnostics must not interrupt browser execution. */
+      }
+    }
     if (agent && !agent.state.activity) {
       const step = agent.state.history.length;
       const page = agent.state.page;

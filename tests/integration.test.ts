@@ -211,7 +211,15 @@ test("inspector saves private settings and drives a complete task through its co
   const url = localSite();
   const models = mockModels();
   const store = new SettingsStore(await temporary(), {});
-  const inspector = startServer({ port: 0, settings: store });
+  const stages: string[] = [];
+  const inspector = startServer({
+    port: 0,
+    settings: store,
+    onUpdate(state) {
+      if (state.activity) stages.push(state.activity.kind);
+      throw new Error("Diagnostic sink disconnected");
+    },
+  });
   cleanup.push(() => inspector.close());
   const browser = await chromium.launch();
   cleanup.push(() => browser.close());
@@ -316,6 +324,9 @@ test("inspector saves private settings and drives a complete task through its co
     planning: 1,
     verification: 1,
   });
+  expect(stages).toContain("planning");
+  expect(stages).toContain("acting");
+  expect(stages).toContain("verifying");
   expect(errors).toEqual([]);
   const state = await (await fetch(`${inspector.url}/api/state`)).json();
   expect(state.page.text).toContain("Results: Lisbon / Design");
