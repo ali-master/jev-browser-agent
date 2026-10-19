@@ -67,6 +67,7 @@ export interface Endpoint {
   baseUrl: string;
   apiKey: string;
   model: string;
+  pricing?: { inputUsdPerMillion: number; outputUsdPerMillion: number };
 }
 export interface Settings {
   decision: Endpoint;
@@ -95,6 +96,7 @@ export interface ModelCall {
   endpoint?: string;
   outcome?: "response" | "network_error" | "http_error" | "provider_error" | "invalid_response";
   http_status?: number;
+  pricing?: Endpoint["pricing"];
 }
 export type ModelRole = "decision" | "text" | "planning" | "verification";
 export type ModelObserver = (call: ModelCall) => void;

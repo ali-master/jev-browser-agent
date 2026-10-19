@@ -76,3 +76,28 @@ test("malformed saved settings fail closed without echoing file contents", async
   await writeFile(store.path, "super-secret malformed JSON");
   await expect(store.read()).rejects.toThrow("Local model settings contain invalid JSON.");
 });
+
+test("optional prices persist and clear on provider or model changes", async () => {
+  const { store } = await setup();
+  const pricing = { inputUsdPerMillion: 0, outputUsdPerMillion: 0.4 };
+  await store.save({ decision: { pricing } });
+  expect((await store.publicSettings()).decision.pricing).toEqual(pricing);
+  await store.save({ decision: { model: "different-model" } });
+  expect((await store.read()).decision.pricing).toBeUndefined();
+  await store.save({ decision: { pricing } });
+  await store.save({ decision: { baseUrl: "https://different.test/v1" } });
+  expect((await store.read()).decision.pricing).toBeUndefined();
+  await store.save({ decision: { pricing } });
+  await store.save({ decision: { pricing: null } });
+  expect((await store.read()).decision.pricing).toBeUndefined();
+});
+
+test.each([
+  { inputUsdPerMillion: 1 },
+  { inputUsdPerMillion: -1, outputUsdPerMillion: 1 },
+  { inputUsdPerMillion: "0", outputUsdPerMillion: 1 },
+  { inputUsdPerMillion: 1, outputUsdPerMillion: 1, other: 1 },
+])("rejects invalid token prices: %j", async (pricing) => {
+  const { store } = await setup();
+  await expect(store.save({ text: { pricing } })).rejects.toThrow("prices");
+});

@@ -2,6 +2,7 @@
 import { parseArgs } from "node:util";
 import { Agent } from "./agent.js";
 import { startServer } from "./server.js";
+import { formatUsage } from "./usage.js";
 
 const help = `Jev Browser Agent (Bun)
 
@@ -78,6 +79,7 @@ try {
       if (state.stop_reason) console.error(state.stop_reason.message);
       if (cancelled || state.status !== "done") process.exitCode = 1;
     } finally {
+      console.log(formatUsage(agent.snapshot().usage));
       process.off("SIGINT", cancel);
       process.off("SIGTERM", cancel);
       await agent.close();

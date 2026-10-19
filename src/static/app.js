@@ -403,6 +403,30 @@ function render() {
   );
   $("step-count").textContent =
     `${state.history.length} actions · ${seconds(state.elapsed_ms || 0)}`;
+  const usage = state.usage;
+  const cost = (row) =>
+    row.unknown_cost_requests
+      ? `Unknown for ${row.unknown_cost_requests} requests · $${row.estimated_cost_usd.toFixed(6)} priced subtotal`
+      : `$${row.estimated_cost_usd.toFixed(6)}`;
+  $("usage-summary").textContent = usage?.total.requests
+    ? `${usage.total.requests} requests · ${cost(usage.total)}`
+    : "No requests yet";
+  $("usage-rows").replaceChildren(
+    ...(usage?.by_model || []).map((row) => {
+      const tr = document.createElement("tr");
+      for (const value of [
+        `${row.role} · ${row.model} · ${row.endpoint || ""}`,
+        `${row.requests} / ${row.failed_requests}`,
+        `${row.input_tokens} / ${row.output_tokens}${row.unknown_usage_requests ? ` · usage unknown for ${row.unknown_usage_requests} requests` : ""}`,
+        cost(row),
+      ]) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.append(td);
+      }
+      return tr;
+    }),
+  );
   $("status").textContent = !connected
     ? "Connection interrupted · showing the last page"
     : paused && busy
@@ -532,6 +556,8 @@ function showSettings(settings) {
       ? "Saved · leave blank to keep"
       : "Optional for a local server";
     $(`${kind}-clear`).checked = false;
+    $(`${kind}-input-price`).value = settings[kind].pricing?.inputUsdPerMillion ?? "";
+    $(`${kind}-output-price`).value = settings[kind].pricing?.outputUsdPerMillion ?? "";
   }
   $("model-tag").textContent = settings.decision.model || "Configure your models";
 }
@@ -541,6 +567,14 @@ $("settings-form").addEventListener("submit", (event) => {
     const body = {};
     for (const kind of ["decision", "text"]) {
       body[kind] = { baseUrl: $(`${kind}-base`).value, model: $(`${kind}-model`).value };
+      const input = $(`${kind}-input-price`).value,
+        output = $(`${kind}-output-price`).value;
+      if (Boolean(input) !== Boolean(output))
+        throw Error("Enter both token prices, or leave both blank for unknown.");
+      body[kind].pricing =
+        input && output
+          ? { inputUsdPerMillion: Number(input), outputUsdPerMillion: Number(output) }
+          : null;
       if ($(`${kind}-clear`).checked) body[kind].apiKey = "";
       else if ($(`${kind}-key`).value) body[kind].apiKey = $(`${kind}-key`).value;
     }
@@ -590,3 +624,12 @@ fetch("/api/settings")
   .catch((error) => {
     $("settings-status").textContent = error.message;
   });
+for (const kind of ["decision", "text"]) {
+  for (const field of ["base", "model"])
+    $(`${kind}-${field}`).addEventListener("input", () => {
+      $(`${kind}-input-price`).value = $(`${kind}-output-price`).value = "";
+      $("connection-checks").replaceChildren();
+      $("settings-status").textContent =
+        "Connection changed · save and check again; token prices cleared";
+    });
+}

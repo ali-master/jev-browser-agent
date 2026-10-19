@@ -128,6 +128,10 @@ test("real Chromium + HTTP model transport completes a local task with independe
     "CLICK",
   ]);
   expect(models.counts).toEqual({ decisions: 3, text: 1, planning: 1, verification: 1 });
+  expect(agent.snapshot().usage.total.requests).toBe(6);
+  expect(agent.snapshot().usage.total.unknown_usage_requests).toBe(6);
+  expect(agent.snapshot().usage.total.unknown_cost_requests).toBe(6);
+  expect(agent.snapshot().usage.by_model).toHaveLength(4);
   expect(agent.state.checkpoints.every((step) => step.verified)).toBe(true);
   expect(
     agent.state.decisions.every(
@@ -165,6 +169,11 @@ test("inspector saves private settings and drives a complete task through its co
     await page.locator(`#${kind}-base`).fill(models.endpoint.baseUrl);
     await page.locator(`#${kind}-model`).fill(models.endpoint.model);
     await page.locator(`#${kind}-key`).fill("private-test-key");
+    await page
+      .locator(`#${kind}-input-price`)
+      .evaluate((el) => (el.closest("details")!.open = true));
+    await page.locator(`#${kind}-input-price`).fill("1");
+    await page.locator(`#${kind}-output-price`).fill("2");
   }
   await page.getByRole("button", { name: "Save model settings" }).click();
   await page.waitForFunction(() =>
@@ -175,6 +184,10 @@ test("inspector saves private settings and drives a complete task through its co
   const publicSettings = await (await fetch(`${inspector.url}/api/settings`)).text();
   expect(publicSettings).not.toContain("private-test-key");
   expect((await store.read()).decision.apiKey).toBe("private-test-key");
+  expect((await store.read()).decision.pricing).toEqual({
+    inputUsdPerMillion: 1,
+    outputUsdPerMillion: 2,
+  });
   await page.getByRole("button", { name: "Check saved connections" }).click();
   await page.waitForFunction(
     () =>

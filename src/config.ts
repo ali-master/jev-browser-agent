@@ -23,7 +23,7 @@ export function httpUrl(value: string, label: string): string {
 function endpoint(value: unknown): Endpoint {
   if (
     !object(value) ||
-    Object.keys(value).some((key) => !["baseUrl", "apiKey", "model"].includes(key)) ||
+    Object.keys(value).some((key) => !["baseUrl", "apiKey", "model", "pricing"].includes(key)) ||
     typeof value.baseUrl !== "string" ||
     typeof value.apiKey !== "string" ||
     typeof value.model !== "string"
@@ -38,7 +38,25 @@ function endpoint(value: unknown): Endpoint {
   }
   if (value.apiKey.length > 8192 || /[\r\n]/.test(value.apiKey) || value.model.length > 256)
     throw new Error("Invalid API key or model identifier.");
-  return { baseUrl, apiKey: value.apiKey.trim(), model: value.model.trim() };
+  const result: Endpoint = { baseUrl, apiKey: value.apiKey.trim(), model: value.model.trim() };
+  if (value.pricing !== undefined && value.pricing !== null) {
+    const pricing = value.pricing;
+    if (
+      !object(pricing) ||
+      Object.keys(pricing).length !== 2 ||
+      ![pricing.inputUsdPerMillion, pricing.outputUsdPerMillion].every(
+        (rate) => typeof rate === "number" && Number.isFinite(rate) && rate >= 0 && rate <= 1e9,
+      )
+    )
+      throw new Error(
+        "Set both input and output prices in USD per million tokens, between 0 and 1,000,000,000; leave both blank for unknown.",
+      );
+    result.pricing = {
+      inputUsdPerMillion: pricing.inputUsdPerMillion as number,
+      outputUsdPerMillion: pricing.outputUsdPerMillion as number,
+    };
+  }
+  return result;
 }
 
 async function optionalFile(path: string): Promise<string | undefined> {
@@ -88,10 +106,11 @@ export class SettingsStore {
   }
   async publicSettings() {
     const settings = await this.read();
-    const publicEndpoint = ({ baseUrl, model, apiKey }: Endpoint) => ({
+    const publicEndpoint = ({ baseUrl, model, apiKey, pricing }: Endpoint) => ({
       baseUrl,
       model,
       hasApiKey: Boolean(apiKey),
+      ...(pricing ? { pricing } : {}),
     });
     return { decision: publicEndpoint(settings.decision), text: publicEndpoint(settings.text) };
   }
@@ -105,6 +124,12 @@ export class SettingsStore {
       if (patch === undefined) continue;
       if (!object(patch)) throw new Error("Invalid model connection.");
       const merged = { ...previous[key], ...patch };
+      if (
+        patch.pricing === undefined &&
+        ((patch.model !== undefined && patch.model !== previous[key].model) ||
+          (patch.baseUrl !== undefined && patch.baseUrl !== previous[key].baseUrl))
+      )
+        delete merged.pricing;
       // Never carry a provider's credential to a newly selected endpoint implicitly.
       if (
         patch.baseUrl !== undefined &&

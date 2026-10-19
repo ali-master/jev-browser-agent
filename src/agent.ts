@@ -7,6 +7,7 @@ import { SettingsStore } from "./config.js";
 import { actionSpace, choose, fieldContext, fieldText } from "./model.js";
 import { MAX_STEPS } from "./questions.js";
 import { createPlan, reviewCompletion, updateProgress } from "./plan.js";
+import { summarizeUsage } from "./usage.js";
 import type {
   Action,
   AgentState,
@@ -97,6 +98,7 @@ export class Agent {
       ...this.state,
       elements: actionSpace(this.state.page.actions).elements,
       max_steps: this.maxSteps,
+      usage: summarizeUsage(this.state.model_calls),
     });
   }
   private elapsed() {

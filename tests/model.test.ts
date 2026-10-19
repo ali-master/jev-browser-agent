@@ -335,3 +335,16 @@ test("decision input includes observation readiness and truncation", async () =>
   Object.assign(state, { readiness: "loading", omitted_actions: 17, discovery_limited: true });
   await choose(state, "Wait for the form", [], p.endpoint, false);
 });
+
+test("request telemetry snapshots pricing without leaking credentials", async () => {
+  const p = provider(() => {
+    p.endpoint.pricing!.inputUsdPerMillion = 99;
+    return Response.json({ usage: { prompt_tokens: 10, completion_tokens: 5 } });
+  });
+  servers.push(p.server);
+  p.endpoint.pricing = { inputUsdPerMillion: 1, outputUsdPerMillion: 2 };
+  const calls: ModelCall[] = [];
+  await postJson(p.endpoint, "chat/completions", {}, (call) => calls.push(call));
+  expect(calls[0]!.pricing).toEqual({ inputUsdPerMillion: 1, outputUsdPerMillion: 2 });
+  expect(JSON.stringify(calls)).not.toContain("test-key");
+});

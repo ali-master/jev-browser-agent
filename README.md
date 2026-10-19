@@ -163,6 +163,22 @@ Omit `--headed` to run headlessly. `--record` saves state and screenshots for in
 
 Only observations and transient model HTTP failures are retried. Browser mutations are never replayed after an uncertain error. Default limits are 60 browser actions and 120 decision cycles; repeated unchanged non-wait actions stop the loop.
 
+## Run usage and cost
+
+The inspector's **Model usage** panel, CLI summary, `agent.snapshot().usage`, and exported trace include every physical model request. Planning, decisions, field text, final verification, retries and response repairs are grouped by role, model and provider. Connection checks are separate probes and are excluded from run totals. Failed-request counts describe transport/provider failures; a successful HTTP response can still fail schema or goal validation.
+
+Usage accepts `prompt_tokens` / `completion_tokens` and `input_tokens` / `output_tokens`. Totals show the reported token subtotal and the number of requests with missing or invalid usage. A provider that returns only `total_tokens` cannot supply a reliable input/output breakdown.
+
+Enter optional input and output prices in **Model settings**, in **USD per million tokens**. Library connections accept the same optional field:
+
+```ts
+pricing: { inputUsdPerMillion: 0.5, outputUsdPerMillion: 1.5 }
+```
+
+These numbers are an example, not provider prices. Each request captures its configured rates. A request with 1,000 reported input tokens and 100 output tokens at those example rates estimates `(1000 × 0.5 + 100 × 1.5) / 1_000_000 = $0.00065`. Changing the model or Base URL clears inherited rates unless replacement rates are supplied. Leave both prices blank for **unknown**; enter explicit zeroes only when that is the intended rate.
+
+`estimated_cost_usd` is the **priced subtotal**. Any nonzero `unknown_cost_requests` means the full run cost is unknown. Missing usage is never treated as free, including failed attempts. This is an estimate at your supplied rates, not an invoice: provider caching discounts, additional charges, taxes and local hardware costs are excluded.
+
 ## Small enough to read
 
 | File                                                | Job                                                           |

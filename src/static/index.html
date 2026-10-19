@@ -56,6 +56,27 @@
               <label class="overlay-control"
                 ><input id="decision-clear" type="checkbox" /> Clear saved API key</label
               >
+              <details>
+                <summary>Optional token prices · USD per million</summary>
+                <label for="decision-input-price">Input price</label
+                ><input
+                  id="decision-input-price"
+                  type="number"
+                  min="0"
+                  max="1000000000"
+                  step="any"
+                  placeholder="Unknown"
+                />
+                <label for="decision-output-price">Output price</label
+                ><input
+                  id="decision-output-price"
+                  type="number"
+                  min="0"
+                  max="1000000000"
+                  step="any"
+                  placeholder="Unknown"
+                />
+              </details>
             </fieldset>
             <fieldset>
               <legend>Chat helper · checklist and field text</legend>
@@ -83,6 +104,27 @@
               <label class="overlay-control"
                 ><input id="text-clear" type="checkbox" /> Clear saved API key</label
               >
+              <details>
+                <summary>Optional token prices · USD per million</summary>
+                <label for="text-input-price">Input price</label
+                ><input
+                  id="text-input-price"
+                  type="number"
+                  min="0"
+                  max="1000000000"
+                  step="any"
+                  placeholder="Unknown"
+                />
+                <label for="text-output-price">Output price</label
+                ><input
+                  id="text-output-price"
+                  type="number"
+                  min="0"
+                  max="1000000000"
+                  step="any"
+                  placeholder="Unknown"
+                />
+              </details>
             </fieldset>
           </div>
           <div class="settings-actions">
@@ -241,6 +283,28 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
           <p class="muted">The starting page and each action will appear here.</p>
         </div>
       </section>
+      <details id="run-usage">
+        <summary>Model usage <span id="usage-summary">No requests yet</span></summary>
+        <p class="muted">
+          Includes planning, decisions, text, final verification and retries. Token counts are
+          reported subtotals. Prices use your saved rates; unknown requests are not free. Estimates
+          exclude provider discounts and fees.
+        </p>
+        <table class="usage-table">
+          <caption>
+            Usage by role and model
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Role / model</th>
+              <th scope="col">Requests / failed</th>
+              <th scope="col">Input / output tokens</th>
+              <th scope="col">Estimated USD</th>
+            </tr>
+          </thead>
+          <tbody id="usage-rows"></tbody>
+        </table>
+      </details>
       <details>
         <summary>What the model sees</summary>
         <pre id="model-state">Start a demo to inspect its structured state.</pre>

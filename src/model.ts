@@ -37,6 +37,7 @@ export async function postJson(
     throw new Error("Set the model identifier in Settings or .env before running.");
   for (let attempt = 0; attempt < 3; attempt++) {
     const started = performance.now();
+    const pricing = endpoint.pricing ? { ...endpoint.pricing } : undefined;
     let response: Response | undefined;
     let result: unknown;
     let outcome: ModelCall["outcome"] = "network_error";
@@ -113,6 +114,7 @@ export async function postJson(
           usage: object(result) && object(result.usage) ? result.usage : {},
           outcome,
           http_status: response?.status,
+          ...(pricing ? { pricing } : {}),
         });
       } catch {
         /* Telemetry cannot change request execution. */
