@@ -149,7 +149,18 @@ async function task(
       expect(elements.some((element) => element.label === "JavaScript")).toBe(
         false,
       );
-      return Response.json(decisionResponse(req, "CLICK", "2"));
+      const response = decisionResponse(req, "CLICK");
+      return Response.json({
+        ...response,
+        answers: {
+          ...response.answers,
+          click_target: {
+            choice: "2",
+            confidence: 1,
+            probabilities: { "2": 1 },
+          },
+        },
+      });
     }
     const target = elements.find((element) => element.label === label);
     const blocked =
@@ -214,15 +225,15 @@ test("unseen destination controls replan only remaining work and retain prior ev
   expect(result.agent.state.status).toBe("done");
 });
 
-test("a wrong first waypoint is rejected before navigation", async () => {
+test("an unrequested target answer cannot override the only valid waypoint", async () => {
   const result = await task("wrong-waypoint");
-  expect(result.failure).toBeInstanceOf(Error);
-  expect(String(result.failure)).toContain("Invalid typed decision");
-  expect(result.agent.state.status).toBe("error");
-  expect(result.visits).toEqual(["/"]);
-  expect(result.agent.state.history).toHaveLength(0);
-  expect(result.agent.state.checkpoints[0]!.verified).toBeNull();
-  expect(result.agent.state.answer).toBeNull();
+  expect(result.failure).toBeUndefined();
+  expect(result.agent.state.status).toBe("done");
+  expect(result.visits).toEqual(["/", "/html", "/css", "/js"]);
+  expect(result.agent.state.history[0]!.action).toBe("HTML");
+  expect(result.agent.state.decisions[0]!.target_source).toBe(
+    "single_candidate",
+  );
 });
 
 test("unobserved answer citations fail closed after a bounded repair", async () => {

@@ -5,6 +5,7 @@ import {
   chatResponse,
   completionResponse,
   decisionResponse,
+  offeredTargets,
   page,
   provider,
 } from "./helpers";
@@ -37,11 +38,13 @@ function runner(
       textCalls++;
       return chatResponse({ text: "Lisbon" });
     }
+    const body = (await request.json()) as DecisionRequest;
+    const targets = offeredTargets(body, operation);
     return Response.json(
       decisionResponse(
-        (await request.json()) as DecisionRequest,
+        body,
         operation,
-        target,
+        target in targets ? target : (Object.keys(targets)[0] ?? target),
       ),
     );
   });
@@ -301,7 +304,7 @@ test("an invented control at the scroll boundary is repaired with actual labels"
     return Response.json(
       decisionResponse(
         body,
-        body.questions.click_target ? "CLICK" : "SCROLL_DOWN",
+        body.questions.operation.criteria.CLICK ? "CLICK" : "SCROLL_DOWN",
         "1",
       ),
     );
@@ -441,7 +444,7 @@ test.each([false, true])(
           body,
           changed && state.url.endsWith("/results") && planning === 1
             ? "WAIT"
-            : body.questions.click_target
+            : body.questions.operation.criteria.CLICK
               ? "CLICK"
               : "WAIT",
           "2",

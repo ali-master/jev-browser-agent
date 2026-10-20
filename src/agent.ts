@@ -468,7 +468,7 @@ export class Agent {
     const observed = structuredClone(state.page);
     state.decision = await choose(
       observed,
-      `${state.plan[state.plan_index]}\nRequired completion evidence: ${JSON.stringify(state.checkpoints[state.plan_index]!.checks)}`,
+      state.plan[state.plan_index]!,
       state.history,
       config.decision,
       false,

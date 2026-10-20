@@ -670,11 +670,18 @@ export async function choose(
       Object.keys(group).map((index) => index.split(":")[0]),
     ),
   );
+  const boundTargets = Object.fromEntries(
+    Object.entries(targets).flatMap(([operation, candidates]) => {
+      const indices = Object.keys(candidates);
+      return indices.length === 1 ? [[operation, indices[0]!]] : [];
+    }),
+  );
   const request: DecisionRequest = {
     model: endpoint.model,
     state: {
       page: { url: page.url, title: page.title, text: page.text },
       required_checks: checks,
+      bound_targets: boundTargets,
       observation: {
         readiness: page.readiness ?? "ready",
         omitted_actions: page.omitted_actions,
@@ -713,6 +720,8 @@ export async function choose(
     },
   };
   for (const [operation, candidates] of Object.entries(targets)) {
+    // The operation still needs a decision; a sole compatible target does not.
+    if (boundTargets[operation]) continue;
     request.questions[`${operation.toLowerCase()}_target`] = {
       type: "choice",
       criteria: Object.fromEntries(
@@ -722,14 +731,8 @@ export async function choose(
             index,
             {
               element: `[${index}] ${action.label}`,
-              current_value: action.current_value ?? action.value ?? "",
-              role: action.role,
-              ref: action.ref,
-              scope: action.scope,
-              context: action.context,
-              checked: action.checked,
-              selected: action.selected,
-              expanded: action.expanded,
+              // Other control properties appear once in state.elements.
+              ...(action.kind === "select" ? { value: action.value } : {}),
             },
           ];
         }),
@@ -746,14 +749,16 @@ export async function choose(
   const answer = validateChoice(result.answers.operation, operations);
   const operation = answer.choice as Operation;
   const candidates = targets[operation as TargetOperation];
-  // Only the selected operation's head can identify an executable target.
-  const targetAnswer = candidates
-    ? validateChoice(
-        result.answers[`${operation.toLowerCase()}_target`],
-        candidates,
-      )
-    : null;
-  const target = targetAnswer?.choice ?? null;
+  const single = boundTargets[operation] ?? null;
+  // An ambiguous target must come from the selected operation's own head.
+  const targetAnswer =
+    candidates && !single
+      ? validateChoice(
+          result.answers[`${operation.toLowerCase()}_target`],
+          candidates,
+        )
+      : null;
+  const target = single ?? targetAnswer?.choice ?? null;
   const choice =
     candidates && target
       ? candidates[target]!.id
@@ -775,6 +780,7 @@ export async function choose(
     operation_probabilities: answer.probabilities,
     target_probabilities: targetAnswer?.probabilities ?? {},
     target_confidence: targetAnswer?.confidence ?? null,
+    target_source: single ? "single_candidate" : targetAnswer ? "model" : null,
     raw_answers: result.answers,
     model: typeof result.model === "string" ? result.model : endpoint.model,
     usage: object(result.usage) ? result.usage : {},

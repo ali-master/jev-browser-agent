@@ -98,6 +98,16 @@ export function decisionResponse(
     },
   };
 }
+export function offeredTargets(
+  body: DecisionRequest,
+  operation: string,
+): Record<string, unknown> {
+  const question = body.questions[`${operation.toLowerCase()}_target`];
+  if (question) return question.criteria;
+  const bound = (body.state as { bound_targets?: Record<string, string> })
+    .bound_targets?.[operation];
+  return bound ? { [bound]: null } : {};
+}
 export function provider(
   handler: (request: Request) => Response | Promise<Response>,
 ) {

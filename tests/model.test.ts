@@ -13,6 +13,7 @@ import {
   choice,
   decisionResponse,
   page,
+  offeredTargets,
   provider,
 } from "./helpers";
 import type { DecisionRequest, HistoryEntry, ModelCall } from "../src/types";
@@ -171,7 +172,7 @@ test("one element index has separate compatible operation heads and indexed nati
   expect(space.elements[2]!.value).toBe("All");
 });
 
-test("one System One request carries all heads and ignores an invalid unused head", async () => {
+test("one request asks only ambiguous targets and ignores an invalid unused head", async () => {
   const requests: DecisionRequest[] = [];
   const { server, endpoint } = provider(async (request) => {
     expect(new URL(request.url).pathname).toBe("/v1/systemone");
@@ -182,9 +183,8 @@ test("one System One request carries all heads and ignores an invalid unused hea
       expect(question.instructions).toContain("User goal: Find a book");
       expect(question.instructions).toContain("Do not repeat satisfied steps");
     }
-    expect(body.questions.type_text_target!.instructions).toContain(
-      "If the operation is TYPE_TEXT, choose its target.",
-    );
+    expect(body.questions.type_text_target).toBeUndefined();
+    expect(offeredTargets(body, "TYPE_TEXT")).toEqual({ "1": null });
     requests.push(body);
     return Response.json({
       ...decisionResponse(body),
@@ -200,9 +200,11 @@ test("one System One request carries all heads and ignores an invalid unused hea
   expect(Object.keys(requests[0]!.questions).sort()).toEqual([
     "click_target",
     "operation",
-    "type_text_target",
   ]);
   expect(result.choice).toBe("e1");
+  expect(result.target_source).toBe("single_candidate");
+  expect(result.target_confidence).toBeNull();
+  expect(result.target_probabilities).toEqual({});
   expect(result.request).not.toHaveProperty("apiKey");
 });
 
@@ -257,7 +259,7 @@ test.each(["Free cancellation", " Free   cancellation "])(
     });
     const p = provider(async (request) => {
       const body = await request.json();
-      expect(Object.keys(body.questions.click_target.criteria)).toEqual(["3"]);
+      expect(Object.keys(offeredTargets(body, "CLICK"))).toEqual(["3"]);
       expect(body.questions.type_text_target).toBeUndefined();
       return Response.json(decisionResponse(body, "CLICK", "3"));
     });
@@ -383,7 +385,7 @@ test("submission targets belong to the form containing the required fields", asy
   ];
   const p = provider(async (request) => {
     const body = await request.json();
-    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["3"]);
+    expect(Object.keys(offeredTargets(body, "CLICK"))).toEqual(["3"]);
     return Response.json(decisionResponse(body, "CLICK", "3"));
   });
   servers.push(p.server);
@@ -430,7 +432,7 @@ test.each(["text", "fragment"])(
     ];
     const p = provider(async (request) => {
       const body = await request.json();
-      expect(Object.keys(body.questions.click_target.criteria)).toEqual(["1"]);
+      expect(Object.keys(offeredTargets(body, "CLICK"))).toEqual(["1"]);
       if (kind === "fragment") {
         expect(body.state.required_checks).toEqual([
           { kind: "url", includes: "#examples" },
@@ -478,7 +480,7 @@ test("a menu opener already executed in this checkpoint is not clicked again", a
   ];
   const p = provider(async (request) => {
     const body = await request.json();
-    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["2"]);
+    expect(Object.keys(offeredTargets(body, "CLICK"))).toEqual(["2"]);
     return Response.json(decisionResponse(body, "CLICK", "2"));
   });
   servers.push(p.server);
@@ -531,7 +533,9 @@ test.each(["false", "true"])(
     ];
     const p = provider(async (request) => {
       const body = await request.json();
-      expect(Boolean(body.questions.click_target)).toBe(expanded === "false");
+      expect(Boolean(Object.keys(offeredTargets(body, "CLICK")).length)).toBe(
+        expanded === "false",
+      );
       return Response.json(
         decisionResponse(body, expanded === "false" ? "CLICK" : "BLOCKED", "1"),
       );
@@ -555,7 +559,7 @@ test("same-named navigation targets remain distinguishable by their observed con
   }));
   const p = provider(async (request) => {
     const body = await request.json();
-    expect(Object.keys(body.questions.click_target.criteria)).toHaveLength(2);
+    expect(Object.keys(offeredTargets(body, "CLICK"))).toHaveLength(2);
     return Response.json(decisionResponse(body, "CLICK", "1"));
   });
   servers.push(p.server);
@@ -824,7 +828,7 @@ test("value steps open custom controls and restrict popup actions to their obser
   const p = provider(async (request) => {
     const body = await request.json();
     expect(body.questions.type_text_target).toBeUndefined();
-    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["1"]);
+    expect(Object.keys(offeredTargets(body, "CLICK"))).toEqual(["1"]);
     return Response.json(decisionResponse(body, "CLICK", "1"));
   });
   servers.push(p.server);
@@ -946,7 +950,7 @@ test("autocomplete prefers the requested city option over unrelated popup button
   ];
   const p = provider(async (request) => {
     const body = await request.json();
-    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["2"]);
+    expect(Object.keys(offeredTargets(body, "CLICK"))).toEqual(["2"]);
     expect(body.questions.type_text_target).toBeUndefined();
     return Response.json(decisionResponse(body, "CLICK", "2"));
   });
@@ -1005,11 +1009,7 @@ test.each([false, true])(
       const operation = queried ? "CLICK" : "TYPE_TEXT";
       const index = queried ? "2" : "1";
       expect(body.questions.operation.criteria.SCROLL_DOWN).toBeUndefined();
-      expect(
-        Object.keys(
-          body.questions[`${operation.toLowerCase()}_target`].criteria,
-        ),
-      ).toEqual([index]);
+      expect(Object.keys(offeredTargets(body, operation))).toEqual([index]);
       expect(
         body.questions[queried ? "type_text_target" : "click_target"],
       ).toBeUndefined();
@@ -1079,7 +1079,9 @@ test.each([false, true])(
     ];
     const p = provider(async (request) => {
       const body = await request.json();
-      expect(Boolean(body.questions.type_text_target)).toBe(empty);
+      expect(
+        Boolean(Object.keys(offeredTargets(body, "TYPE_TEXT")).length),
+      ).toBe(empty);
       expect("WAIT" in body.questions.operation.criteria).toBe(!empty);
       return Response.json(
         decisionResponse(
@@ -1242,9 +1244,7 @@ test.each([false, true])(
     const p = provider(async (request) => {
       const body = await request.json();
       expect(body.questions.type_text_target).toBeUndefined();
-      expect(Object.keys(body.questions.click_target.criteria)).toEqual([
-        target,
-      ]);
+      expect(Object.keys(offeredTargets(body, "CLICK"))).toEqual([target]);
       expect(
         body.state.elements.map((element: { index: string }) => element.index),
       ).toEqual([target]);
@@ -1302,7 +1302,7 @@ test("a date outside the visible calendar offers month navigation instead of the
   ];
   const p = provider(async (request) => {
     const body = await request.json();
-    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["2"]);
+    expect(Object.keys(offeredTargets(body, "CLICK"))).toEqual(["2"]);
     return Response.json(decisionResponse(body, "CLICK", "2"));
   });
   servers.push(p.server);
@@ -1367,7 +1367,7 @@ test("an explicit airport identifier selects its observed option instead of the 
   ];
   const p = provider(async (request) => {
     const body = await request.json();
-    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["3"]);
+    expect(Object.keys(offeredTargets(body, "CLICK"))).toEqual(["3"]);
     return Response.json(decisionResponse(body, "CLICK", "3"));
   });
   servers.push(p.server);

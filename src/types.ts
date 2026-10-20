@@ -134,6 +134,7 @@ export interface Decision extends ModelCall {
   operation_probabilities: Record<string, number>;
   target_probabilities: Record<string, number>;
   target_confidence: number | null;
+  target_source?: "model" | "single_candidate" | null;
   raw_answers: Record<string, unknown>;
   request: DecisionRequest;
 }
