@@ -10,6 +10,7 @@ import type {
 import { httpUrl } from "./config";
 import { ProfileStore, SecretVault } from "./credentials";
 import type { ProfileOptions, Secrets } from "./credentials";
+import type { VisualScreen, VisualPoint } from "./vision";
 import {
   blockedUrlMatcher,
   installNetworkFilters,
@@ -24,6 +25,12 @@ const READ_STATE = await Bun.file(
 
 export class StalePage extends Error {}
 export interface BrowserDriver {
+  screen?(page: PageState): Promise<VisualScreen>;
+  bindVisual?(
+    page: PageState,
+    point: VisualPoint,
+    hash: string,
+  ): Promise<PageState>;
   observe(screenshot?: boolean): Promise<PageState>;
   settle?(page: PageState, screenshot?: boolean): Promise<PageState>;
   fresh(page: PageState, action?: Action): Promise<boolean>;
@@ -89,6 +96,7 @@ export class Browser implements BrowserDriver {
   private frameIds = new WeakMap<Frame, string>();
   private frameViewer?: (frame: { image: string; url: string }) => void;
   private rawGuards = new Map<string, Pick<PageState, "page_key" | "guards">>();
+  private visualBindings = new Map<string, Action>();
   private constructor(
     private browser: PlaywrightBrowser,
     private context: BrowserContext,
@@ -584,6 +592,92 @@ export class Browser implements BrowserDriver {
     return current;
   }
 
+  /** Capture an optional vision frame separately from recordings, with a bounded wait. */
+  async screen(page: PageState): Promise<VisualScreen> {
+    if (this.vault.enabled)
+      throw new Error("Vision is disabled for runs containing secrets.");
+    if (!(await this.fresh(page)))
+      throw new StalePage("Page changed before vision.");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        this.session.send("Page.captureScreenshot", { format: "png" }),
+        new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error("Vision capture timed out.")),
+              3000,
+            );
+        }),
+      ]);
+      if (result.data.length > 7_000_000)
+        throw new Error("Vision image exceeds its size budget.");
+      return {
+        image: result.data,
+        hash: new Bun.CryptoHasher("sha256").update(result.data).digest("hex"),
+        w: page.w,
+        h: page.h,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Bind a proposed pixel to an observed canvas/application node, never an arbitrary page coordinate. */
+  async bindVisual(
+    page: PageState,
+    point: VisualPoint,
+    hash: string,
+  ): Promise<PageState> {
+    if (
+      !Number.isFinite(point.x) ||
+      !Number.isFinite(point.y) ||
+      point.x < 0 ||
+      point.y < 0 ||
+      point.x >= page.w ||
+      point.y >= page.h ||
+      typeof point.label !== "string" ||
+      !point.label.trim() ||
+      point.label.length > 120
+    )
+      throw new Error("Invalid visual point.");
+    const offset = await this.frameOffset(),
+      local = { x: point.x - offset.x, y: point.y - offset.y };
+    const binding = await this.evaluate<{
+      node: number;
+      guard: unknown;
+    } | null>(`(() => {
+      const c=window.__jevFast, e=c?.hit(${local.x},${local.y})?.closest('canvas,[role="application"]');
+      if(!e || !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
+      if(!c.ids.has(e)) c.ids.set(e,c.next++);
+      const node=c.ids.get(e);c.nodes.set(node,e);
+      return {node,guard:c.guard(e)};
+    })()`);
+    if (!binding)
+      throw new Error(
+        "Visual target is not inside an observed canvas/application widget.",
+      );
+    if ((await this.screen(page)).hash !== hash)
+      throw new StalePage("Image changed during vision.");
+    const state = structuredClone(page);
+    const action: Action = {
+      id: `visual_${crypto.randomUUID()}`,
+      kind: "click",
+      node: binding.node,
+      ref: `${page.document_id}:${binding.node}`,
+      role: "canvas",
+      label: point.label,
+      visual: { ...local, hash },
+      rect: { x: point.x - 3, y: point.y - 3, w: 6, h: 6 },
+    };
+    state.actions.push(action);
+    state.guards[String(binding.node)] = binding.guard;
+    state.fingerprint = fingerprint(state);
+    this.visualBindings.set(state.fingerprint, structuredClone(action));
+    while (this.visualBindings.size > 8)
+      this.visualBindings.delete(this.visualBindings.keys().next().value!);
+    return state;
+  }
+
   async fresh(page: PageState, action?: Action): Promise<boolean> {
     if (page.context_id !== this.contextId(this.frame)) return false;
     if (!Bun.deepEquals(page.frame_offset, await this.frameOffset(), true))
@@ -628,6 +722,39 @@ export class Browser implements BrowserDriver {
       throw new Error("Invalid field text; nothing typed.");
     if (!(await this.fresh(page, action)))
       throw new StalePage("Page changed since this decision. Observe again.");
+    if ("visual" in action && action.visual) {
+      if (!isDeepStrictEqual(this.visualBindings.get(page.fingerprint), action))
+        throw new StalePage("Visual binding expired.");
+      const current = await this.framePoint({
+        x: action.visual.x,
+        y: action.visual.y,
+      });
+      await this.movePointer(current, page, action);
+      if (
+        (await this.screen(page)).hash !== action.visual.hash ||
+        !(await this.fresh(page, action))
+      )
+        throw new StalePage("Image changed before visual input.");
+      const hit = await this.evaluate<boolean>(
+        `(()=>{const c=window.__jevFast,e=c?.nodes.get(${action.node});return Boolean(e?.contains(c.hit(${action.visual.x},${action.visual.y})));})()`,
+      );
+      if (!hit) throw new StalePage("Visual target is covered.");
+      for (const type of ["mousePressed", "mouseReleased"] as const) {
+        await this.session.send("Input.dispatchMouseEvent", {
+          type,
+          ...current,
+          button: "left",
+          clickCount: 1,
+        });
+        this.showPointer(
+          page,
+          action,
+          type === "mousePressed" ? "press" : "release",
+        );
+      }
+      this.afterInput = action;
+      return;
+    }
     if (action.kind === "fill" && action.secret_key)
       text = this.vault.resolve(
         action,

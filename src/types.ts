@@ -31,6 +31,7 @@ interface Target {
   /** Scroll a visible, observed overflow container. */
   scroll_delta?: number;
   secret_key?: string;
+  visual?: { x: number; y: number; hash: string };
   rect?: { x: number; y: number; w: number; h: number };
 }
 export type Action =
@@ -141,7 +142,7 @@ export interface ModelCall {
   pricing?: Endpoint["pricing"];
 }
 export type ModelRole =
-  "decision" | "text" | "planning" | "verification" | "extraction";
+  "decision" | "text" | "planning" | "verification" | "extraction" | "vision";
 export type ModelObserver = (call: ModelCall) => void;
 export interface Decision extends ModelCall {
   choice: string;
@@ -225,6 +226,7 @@ export interface AgentMemory {
   }[];
 }
 export interface AgentState {
+  vision?: { attempts: number; error?: string };
   privacy?: { images_disabled: true };
   output?: import("./output").StructuredOutput;
   workflow?: {

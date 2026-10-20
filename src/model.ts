@@ -597,7 +597,9 @@ export async function choose(
             allowed.has(action.id) ||
             ((!controlChecks.length || missingControls.length > 0) &&
               "node" in action &&
-              Boolean(action.context_id || action.scroll_delta)),
+              Boolean(
+                action.context_id || action.scroll_delta || action.visual,
+              )),
         ),
       );
       if (Object.keys(candidates).length) targets[operation] = candidates;

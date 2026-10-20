@@ -22,6 +22,7 @@ const help = `Jev Browser Agent (Bun)
   --profile NAME              Restore/save an encrypted local login profile
   --allow-origin ORIGIN       Additional profile origin (repeatable)
   --secrets PATH              Private JSON secret bindings; never sent to models
+  --vision                    Optional canvas fallback using a multimodal chat helper
 
   jev login --url URL --profile NAME
     Sign in manually in Chromium, then press Enter in this terminal to save.
@@ -55,6 +56,7 @@ try {
       profile: { type: "string" },
       "allow-origin": { type: "string", multiple: true },
       secrets: { type: "string" },
+      vision: { type: "boolean" },
     },
   });
   const command = positionals[0] ?? "serve";
@@ -177,6 +179,7 @@ try {
       headless: !values.headed,
       cdpUrl: process.env.BROWSER_CDP_URL,
       recordDir: values.record,
+      vision: values.vision,
       profile: values.profile
         ? {
             name: values.profile,

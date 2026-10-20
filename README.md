@@ -58,7 +58,7 @@ Operation and target questions share **one logical request**. When an operation 
 
 For reading tasks, each requested section named in a step must have its own check when its section link is observed. Reading one section or the page introduction does not verify another section.
 
-There are no site-specific action scripts or prepared field strings in the policy. Model output never becomes a selector, coordinate, shell command, or executable JavaScript.
+There are no site-specific action scripts or prepared field strings in the policy. Normal model output never becomes a selector, coordinate, shell command, or executable JavaScript. Optional vision coordinates are constrained to a freshly observed canvas/application widget and revalidated before input.
 
 ## Try it
 
@@ -309,6 +309,14 @@ The CLI accepts `--secrets private-secrets.json`; the inspector accepts the same
 
 Prompts, history and traces use placeholders; changed password contents still invalidate an old decision. Screenshots, live images, pointer events and workflow recording/replay are disabled for runs containing secrets. Literal values are redacted from observed text too; arbitrary encodings or transformations performed by a site cannot be recognized as secrets. Give credentials only to sites you trust.
 
+## Optional visual fallback
+
+Set `vision: true`, pass `--vision`, or enable **Visual fallback for canvas** under inspector Run options. It defaults off. The current chat helper must support OpenAI-compatible image input; library callers can provide a separate `vision: { endpoint }`.
+
+When no DOM targets are available, or the decision model returns `BLOCKED`, the helper may propose one canvas/application-widget target. The runtime validates its pixel bounds, binds it to the actual widget and offers it to the ordinary typed decision model. The proposal alone does not execute a click. Each action step has a bounded fallback attempt, and its physical model usage appears under `vision`.
+
+Vision sends the current viewport image to the configured helper. Coordinates never become arbitrary page input: the widget identity, parent frames, exact hit point and PNG hash are checked again before clicking. Changed/covered targets are rejected. This conservative implementation supports stable canvas click targets; animations and hover redraws can cause safe rejection. It does not implement visual typing or certify canvas-only final answers. Normal page checkpoints and final review still govern completion. Vision and secret-enabled runs cannot be combined.
+
 ## Page filters
 
 Expand **Agent settings** in the inspector to enable **Block ad requests**, add **Blocked URLs**, or choose CSS selectors under **Remove elements**. All three are off or empty by default. Saved filters live in `.jev/settings.json` alongside the model connections and are used by the inspector, CLI and library. Changes apply to the **next task**; an active run keeps the filters it started with.
@@ -354,7 +362,7 @@ Frame input maps local geometry to the tab viewport and hit-tests the exact poin
 ## Why it moves
 
 - **Ask only necessary questions.** One request chooses the operation and any ambiguous target. A single compatible target needs no separate model question; freshness and execution checks still apply.
-- **No screenshots in the decision loop.** The model receives visible controls and page text. Browser frames serve the inspector and recordings.
+- **DOM first.** Normal decisions receive visible controls and page text. Images reach a model only when the optional visual fallback is enabled and needed.
 - **One browser call per snapshot.** Read controls, names, values and visible text together, retaining references to the observed DOM nodes.
 - **Validate before input.** Recheck the document, field values and target context. Resolve current geometry and reject covered controls before acting.
 - **Bind identities.** Decisions retain their original observation; fields carry document/node references and nearby form context. Dropdowns select the exact observed option even when values are duplicated.

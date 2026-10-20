@@ -584,6 +584,9 @@ $("task-result").addEventListener("click", (event) => {
 
 function render() {
   if (!state) return;
+  $("vision-status").textContent = state.vision
+    ? `Visual fallback · ${state.vision.attempts} attempts${state.vision.error ? ` · ${state.vision.error}` : ""}`
+    : "";
   $("privacy-status").textContent = state.privacy?.images_disabled
     ? "Private run · screenshots and live images are disabled. Activity and values use secret placeholders."
     : "";
@@ -711,6 +714,7 @@ $("task-form").addEventListener("submit", (event) => {
       scenario: $("scenario").value,
       goal: $("goal").value,
       url: $("start-url").value,
+      vision: $("vision-enabled").checked,
       ...($("profile-name").value.trim()
         ? { profile: $("profile-name").value.trim() }
         : {}),

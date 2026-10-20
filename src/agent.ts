@@ -17,6 +17,8 @@ import { WorkflowCache, workflowGoal, workflowOptions } from "./workflow";
 import { extractOutput, validateSchema } from "./output";
 import type { OutputSchema } from "./output";
 import { SecretVault } from "./credentials";
+import { locateVisual } from "./vision";
+import type { VisionOptions } from "./vision";
 import type { WorkflowOptions } from "./workflow";
 import {
   createPlan,
@@ -46,6 +48,7 @@ export interface AgentOptions extends BrowserOptions {
   onUpdate?: () => void;
   workflow?: WorkflowOptions;
   outputSchema?: OutputSchema;
+  vision?: boolean | VisionOptions;
 }
 const stopped = (state: AgentState) =>
   ["done", "blocked", "error", "closed"].includes(state.status);
@@ -92,6 +95,7 @@ export class Agent {
   private workflowLoaded = false;
   private workflowText?: string;
   private vault: SecretVault;
+  private visualAttempts = new Set<string>();
 
   constructor(
     readonly browser: BrowserDriver,
@@ -100,6 +104,8 @@ export class Agent {
     private options: AgentOptions = {},
   ) {
     this.vault = new SecretVault(options.secrets);
+    if (this.vault.enabled && options.vision)
+      throw new Error("Vision cannot be enabled in a run containing secrets.");
     if (this.vault.enabled && options.workflow)
       throw new Error(
         "Workflows cannot be recorded or replayed in a run containing secrets.",
@@ -144,6 +150,7 @@ export class Agent {
       model_calls: [],
       elapsed_ms: 0,
       record: Boolean(options.recordDir),
+      ...(options.vision ? { vision: { attempts: 0 } } : {}),
       ...(this.vault.enabled ? { privacy: { images_disabled: true } } : {}),
       ...(this.workflow ? { workflow: this.workflow.stats } : {}),
     };
@@ -292,6 +299,8 @@ export class Agent {
       this.acceptObservation(
         await this.browser.observe(this.options.screenshots || state.record),
       );
+    if (!state.page.actions.some((action) => "node" in action))
+      await this.offerVision();
     if (!state.checkpoints.length) {
       this.activity("planning");
       state.interpreted_goal ??= await interpretGoal(
@@ -505,7 +514,7 @@ export class Agent {
     }
     const config = await this.settings();
     this.activity("deciding");
-    const observed = structuredClone(state.page);
+    let observed = structuredClone(state.page);
     const replay = this.workflow?.choose(
       observed,
       state.checkpoints[state.plan_index]!,
@@ -558,6 +567,21 @@ export class Agent {
             state.history.length,
           this.memory.context(state.page, state.checkpoints),
         );
+    if (state.decision.operation === "BLOCKED" && (await this.offerVision())) {
+      observed = structuredClone(state.page);
+      state.decision = await choose(
+        observed,
+        state.plan[state.plan_index]!,
+        state.history,
+        config.decision,
+        false,
+        this.modelObserver("decision"),
+        state.checkpoints[state.plan_index]!.checks,
+        state.checkpoints[state.plan_index]!.started_at_action ??
+          state.history.length,
+        this.memory.context(state.page, state.checkpoints),
+      );
+    }
     this.selection = {
       fingerprint: observed.fingerprint,
       decision: structuredClone(state.decision),
@@ -571,6 +595,50 @@ export class Agent {
       elapsed_ms: this.elapsed(),
     });
     state.status = "predicted";
+  }
+
+  /** Offer one guarded visual candidate per action step; normal typed choice and verification remain required. */
+  private async offerVision(): Promise<boolean> {
+    if (
+      !this.options.vision ||
+      !this.browser.screen ||
+      !this.browser.bindVisual ||
+      this.state.page.readiness === "loading"
+    )
+      return false;
+    const key = new Bun.CryptoHasher("sha256")
+      .update(
+        JSON.stringify([this.state.page.marker, this.state.history.length]),
+      )
+      .digest("hex");
+    if (this.visualAttempts.has(key)) return false;
+    this.visualAttempts.add(key);
+    this.state.vision!.attempts++;
+    this.activity("deciding");
+    try {
+      const screen = await this.browser.screen(this.state.page);
+      const endpoint =
+        (typeof this.options.vision === "object"
+          ? this.options.vision.endpoint
+          : undefined) ?? (await this.settings()).text;
+      const point = await locateVisual(
+        screen,
+        this.state.plan[this.state.plan_index] ?? this.state.goal,
+        endpoint,
+        this.modelObserver("vision"),
+      );
+      if (!point) return false;
+      this.acceptObservation(
+        await this.browser.bindVisual(this.state.page, point, screen.hash),
+      );
+      delete this.state.vision!.error;
+      return true;
+    } catch (error) {
+      if (error instanceof StalePage) throw error;
+      this.state.vision!.error =
+        error instanceof Error ? error.message : "Visual fallback failed.";
+      return false;
+    }
   }
 
   private async progress() {

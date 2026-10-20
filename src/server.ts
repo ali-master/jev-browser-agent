@@ -330,6 +330,7 @@ export function startServer(
               cdpUrl: options.cdpUrl,
               filters: config.filters,
               workflow,
+              vision: body.vision === true,
               profile,
               secrets: body.secrets as
                 import("./credentials").Secrets | undefined,
