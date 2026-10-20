@@ -141,7 +141,23 @@ test.each([false, true])(
       ).status,
     ).toBe(200);
     const events = await fetch(`${url}/api/events`);
-    const streamEnded = events.text();
+    const streamEnded = (async () => {
+      const reader = events.body!.getReader();
+      let text = "";
+      try {
+        for (;;) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          text += new TextDecoder().decode(chunk.value);
+        }
+      } catch (error) {
+        // Forced server shutdown may reset SSE after sending the initial state.
+        if ((error as { code?: string }).code !== "ECONNRESET") throw error;
+      } finally {
+        reader.releaseLock();
+      }
+      return text;
+    })();
     const pending = post("predict").catch(() => undefined);
     await started.promise;
     const before = performance.now();
