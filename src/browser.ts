@@ -11,6 +11,7 @@ import { httpUrl } from "./config";
 import { ProfileStore, SecretVault } from "./credentials";
 import type { ProfileOptions, Secrets } from "./credentials";
 import type { VisualScreen, VisualPoint } from "./vision";
+import { PageTools, webMCPOptions, type WebMCPOptions } from "./webmcp";
 import {
   blockedUrlMatcher,
   installNetworkFilters,
@@ -42,6 +43,7 @@ export interface BrowserDriver {
   close(): Promise<void>;
 }
 export interface BrowserOptions {
+  webMCP?: WebMCPOptions;
   profile?: ProfileOptions;
   secrets?: Secrets;
   filters?: PageFilters;
@@ -107,6 +109,7 @@ export class Browser implements BrowserDriver {
     private profile?: ProfileStore,
     private onPointer?: BrowserOptions["onPointer"],
     private blockedUrl: (url: string) => boolean = () => false,
+    private pageTools = new Map<CDPSession, PageTools>(),
   ) {
     this.frame = tab.mainFrame();
   }
@@ -117,6 +120,10 @@ export class Browser implements BrowserDriver {
   ): Promise<Browser> {
     const targetUrl = httpUrl(url, "Page URL");
     const vault = new SecretVault(options.secrets);
+    const webmcp = webMCPOptions(options.webMCP);
+    if (webmcp && vault.enabled)
+      throw new Error("WebMCP cannot be enabled in a run containing secrets.");
+    const pageTools = new Map<CDPSession, PageTools>();
     const profile = options.profile
       ? new ProfileStore(options.profile, targetUrl)
       : undefined;
@@ -136,6 +143,13 @@ export class Browser implements BrowserDriver {
             // The CLI owns shutdown; Playwright still cleans child processes on exit.
             handleSIGINT: false,
             handleSIGTERM: false,
+            ...(webmcp
+              ? {
+                  args: [
+                    "--enable-features=WebMCP,WebMCPTesting,DevToolsWebMCPSupport",
+                  ],
+                }
+              : {}),
           });
     } catch (cause) {
       throw new Error(
@@ -162,6 +176,11 @@ export class Browser implements BrowserDriver {
             await session.send("Emulation.setFocusEmulationEnabled", {
               enabled: true,
             });
+            if (webmcp) {
+              const tools = new PageTools(session, webmcp);
+              await tools.enable();
+              pageTools.set(session, tools);
+            }
             return session;
           })();
           sessions.set(page, ready);
@@ -228,6 +247,7 @@ export class Browser implements BrowserDriver {
         profile,
         options.showPointer && !vault.enabled ? options.onPointer : undefined,
         blockedUrl,
+        pageTools,
       );
     } catch (cause) {
       await context?.close().catch(() => {});
@@ -447,6 +467,16 @@ export class Browser implements BrowserDriver {
       state.w = viewport.width;
       state.h = viewport.height;
     }
+    const tools = this.pageTools.get(this.session);
+    // shortcut: native tools are scoped to the top-level document; child frames retain DOM control.
+    if (tools && this.frame === this.tab.mainFrame()) {
+      const actions = tools.actions(state);
+      state.actions.push(...actions);
+      state.webmcp = { available: tools.available, tools: actions.length };
+      state.marker.push(actions);
+      if (actions.length && state.readiness === "empty")
+        state.readiness = "ready";
+    }
     state.marker.push(
       state.context_id,
       offset,
@@ -603,10 +633,10 @@ export class Browser implements BrowserDriver {
       const result = await Promise.race([
         this.session.send("Page.captureScreenshot", { format: "png" }),
         new Promise<never>((_, reject) => {
-            timer = setTimeout(
-              () => reject(new Error("Vision capture timed out.")),
-              3000,
-            );
+          timer = setTimeout(
+            () => reject(new Error("Vision capture timed out.")),
+            3000,
+          );
         }),
       ]);
       if (result.data.length > 7_000_000)
@@ -683,6 +713,11 @@ export class Browser implements BrowserDriver {
     if (!Bun.deepEquals(page.frame_offset, await this.frameOffset(), true))
       return false;
     if (
+      action?.kind === "tool" &&
+      !this.pageTools.get(this.session)?.matches(action, page)
+    )
+      return false;
+    if (
       action &&
       (action.kind === "click" || action.kind === "select") &&
       !action.context_id
@@ -722,6 +757,20 @@ export class Browser implements BrowserDriver {
       throw new Error("Invalid field text; nothing typed.");
     if (!(await this.fresh(page, action)))
       throw new StalePage("Page changed since this decision. Observe again.");
+    if (action.kind === "tool") {
+      const tools = this.pageTools.get(this.session);
+      if (!tools?.matches(action, page))
+        throw new StalePage("WebMCP tool registration changed.");
+      let input: unknown;
+      try {
+        input = JSON.parse(text ?? "");
+      } catch {
+        throw new Error("Invalid WebMCP input JSON; no tool invoked.");
+      }
+      await tools.invoke(action, input);
+      this.afterInput = action;
+      return;
+    }
     if ("visual" in action && action.visual) {
       if (!isDeepStrictEqual(this.visualBindings.get(page.fingerprint), action))
         throw new StalePage("Visual binding expired.");

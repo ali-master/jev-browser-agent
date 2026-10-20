@@ -342,6 +342,31 @@ When no DOM targets are available, or the decision model returns `BLOCKED`, the 
 
 Vision sends the current viewport image to the configured helper. Coordinates never become arbitrary page input: the widget identity, parent frames, exact hit point and PNG hash are checked again before clicking. Changed/covered targets are rejected. This conservative implementation supports stable canvas click targets; animations and hover redraws can cause safe rejection. It does not implement visual typing or certify canvas-only final answers. Normal page checkpoints and final review still govern completion. Vision and secret-enabled runs cannot be combined.
 
+## WebMCP tools alongside DOM actions
+
+Opt in to page-provided tools with exact origin and tool-name permissions:
+
+```ts
+import { Agent } from "@usex/jev-browser-agent";
+
+const agent = await Agent.create("https://example.com/search", "Find Lisbon and show its results.", {
+  webMCP: {
+    allowedTools: { "https://example.com": ["search"] },
+    timeoutMs: 10_000,
+  },
+});
+for await (const state of agent.run()) console.log(state.history.at(-1));
+await agent.close();
+```
+
+Use `--webmcp permissions.json` in the CLI, or paste the same options object in **Run options → WebMCP** in the inspector. Blank leaves it disabled. Only explicitly named tools are offered through typed `CALL_TOOL` decisions. The chat helper generates arguments against the observed input schema; local validation runs before the native invocation. Arguments and the operation appear in the activity trail. DOM actions remain available.
+
+The browser checks page freshness and registration changes before invocation. A tool is invoked once; timeout, cancellation or error stops the run and disables further tool invocation in that context. Cancellation cannot guarantee that a site's side effect was undone. A successful response is not proof of completion: normal page checkpoints and final goal review still run. Raw tool responses are not used as instructions or completion evidence.
+
+This is experimental [WebMCP](https://webmachinelearning.github.io/webmcp/), tested with Chromium 156's native CDP domain, not a polyfill. Jev launches Chromium with `--enable-features=WebMCP,WebMCPTesting,DevToolsWebMCPSupport` when enabled. An external CDP browser needs those flags itself. Only tools in the active top-level page are supported; child frames continue through DOM controls. A tool must expose an object input schema supported by the local validator and produce an observable page result. Unsupported schemas are omitted. Secret bindings and workflow replay cannot be combined with WebMCP.
+
+Tool input schemas are limited to 8 KB and 16 nesting levels; references and regular expressions are rejected to keep page-owned validation bounded. Allow only trusted sites and tools: page descriptions and `readOnly` annotations are claims, not enforced guarantees. Names and schemas do not prove a tool's actual effects. Native registration/execution is not an atomic version-lock API, so a site can still replace its implementation during dispatch; do not grant consequential tools based on their descriptions alone.
+
 ## Page filters
 
 Expand **Agent settings** in the inspector to enable **Block ad requests**, add **Blocked URLs**, or choose CSS selectors under **Remove elements**. All three are off or empty by default. Saved filters live in `.jev/settings.json` alongside the model connections and are used by the inspector, CLI and library. Changes apply to the **next task**; an active run keeps the filters it started with.
@@ -444,7 +469,7 @@ Tests exercise local browser fixtures and mock model endpoints. They independent
 
 **Goal coverage and answer interpretation still depend on the chat model.** Deterministic checks validate control identities, check types and observed citations. The separate final review reduces missed requirements but cannot prove semantic completeness for an arbitrary goal or an unseen server-side effect. Reading retains up to 16,000 characters from reached viewports, removes changed or hidden text, and preserves the last 12 visited pages for sourced comparisons. Checkpoints retain their own observed evidence. Unseen content is never read from below the viewport. A valid model action can still be the wrong action.
 
-The DOM reader handles common HTML/ARIA controls, native date/time/range/color fields, editable variants, labels for hidden checkbox/radio controls, and bounded discovery of custom click targets. Discovery scans at most 5,000 extra DOM nodes and reports truncation; at most 100 open shadow roots are traversed. Native values are checked against type, min/max and step constraints before input. Canvas, uploads and arbitrary keyboard widgets remain outside the DOM reader. Password and file inputs are excluded. Duplicate labels need matching references or scope to verify. Workflows that deliberately replace earlier requested values need a narrower goal.
+The DOM reader handles common HTML/ARIA controls, native date/time/range/color fields, editable variants, labels for hidden checkbox/radio controls, and bounded discovery of custom click targets. Discovery scans at most 5,000 extra DOM nodes and reports truncation; at most 100 open shadow roots are traversed. Native values are checked against type, min/max and step constraints before input. Canvas, uploads and arbitrary keyboard widgets remain outside the DOM reader; the optional visual fallback handles stable canvas clicks. Password inputs require an explicitly scoped secret binding; file inputs remain excluded. Duplicate labels need matching references or scope to verify. Workflows that deliberately replace earlier requested values need a narrower goal.
 
 The inspector binds to `127.0.0.1` and checks Host, Origin and a per-process request token. Exported traces and screenshots can contain page content and generated field values. Keep them private; `.env`, `.jev/` and `artifacts/` are ignored by Git.
 

@@ -29,3 +29,5 @@ export {
 } from "./model";
 export { summarizeUsage, formatUsage } from "./usage";
 export type * from "./types";
+export { webMCPOptions } from "./webmcp";
+export type { WebMCPOptions, PageTool } from "./webmcp";

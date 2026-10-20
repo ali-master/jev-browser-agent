@@ -1,4 +1,4 @@
-export type TargetOperation = "CLICK" | "TYPE_TEXT" | "SELECT";
+export type TargetOperation = "CLICK" | "TYPE_TEXT" | "SELECT" | "CALL_TOOL";
 export type Operation =
   TargetOperation | "SCROLL_UP" | "SCROLL_DOWN" | "WAIT" | "DONE" | "BLOCKED";
 
@@ -36,6 +36,7 @@ interface Target {
 }
 export type Action =
   | (Target & { kind: "click" | "fill" })
+  | (Target & { kind: "tool"; tool: import("./webmcp").PageTool })
   | (Target & {
       kind: "select";
       value: string;
@@ -46,6 +47,7 @@ export type Action =
   | { id: string; kind: "wait"; label: string };
 
 export interface PageState {
+  webmcp?: { available: boolean; tools: number };
   document_id: string;
   context_id?: string;
   frame_offset?: { x: number; y: number };
@@ -70,6 +72,7 @@ export interface PageState {
 }
 
 export interface ElementView {
+  tool?: import("./webmcp").PageTool;
   secret_key?: string;
   index: string;
   label: string;
@@ -189,7 +192,7 @@ export type CompletionCheck =
   | (ControlCheck & { kind: "value"; equals: string })
   | (ControlCheck & { kind: "checked"; equals: boolean })
   | (ControlCheck & { kind: "expanded"; equals: boolean })
-  | (ControlCheck & { kind: "action"; action: "click" })
+  | (ControlCheck & { kind: "action"; action: "click" | "tool" })
   | { kind: "title" | "url" | "text"; includes: string };
 export interface TaskStep {
   instruction: string;

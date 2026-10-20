@@ -26,6 +26,7 @@ const help = `Jev Browser Agent (Bun)
   --allow-origin ORIGIN       Additional profile origin (repeatable)
   --secrets PATH              Private JSON secret bindings; never sent to models
   --vision                    Optional canvas fallback using a multimodal chat helper
+  --webmcp PATH               JSON permissions: {"allowedTools":{"https://site.example":["search"]}}
 
   jev login --url URL --profile NAME
     Sign in manually in Chromium, then press Enter in this terminal to save.
@@ -60,6 +61,7 @@ try {
       "allow-origin": { type: "string", multiple: true },
       secrets: { type: "string" },
       vision: { type: "boolean" },
+      webmcp: { type: "string" },
       suite: { type: "string" },
       label: { type: "string" },
       repeat: { type: "string" },
@@ -223,6 +225,7 @@ try {
       cdpUrl: process.env.BROWSER_CDP_URL,
       recordDir: values.record,
       vision: values.vision,
+      webMCP: values.webmcp ? await Bun.file(values.webmcp).json() : undefined,
       profile: values.profile
         ? {
             name: values.profile,

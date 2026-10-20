@@ -284,6 +284,21 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
           >
           <label for="profile-name">Login profile · optional name</label>
           <input id="profile-name" placeholder="research" autocomplete="off" />
+          <label for="webmcp-permissions"
+            >WebMCP · optional tool permissions JSON</label
+          >
+          <textarea
+            id="webmcp-permissions"
+            rows="3"
+            placeholder='{"allowedTools":{"https://example.com":["search"]}}'
+          ></textarea>
+          <p class="muted">
+            Only allow tools from sites you trust. Tool permissions can
+            authorize real actions. Requires experimental Chromium support.
+            Blank keeps WebMCP off; secret bindings and workflow replay cannot
+            be combined with it.
+          </p>
+          <p id="webmcp-status" class="muted"></p>
           <label for="secret-bindings"
             >Secrets JSON · held only for this run</label
           >

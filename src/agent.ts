@@ -19,6 +19,7 @@ import type { OutputSchema } from "./output";
 import { SecretVault } from "./credentials";
 import { locateVisual } from "./vision";
 import type { VisionOptions } from "./vision";
+import { toolInput } from "./webmcp";
 import type { WorkflowOptions } from "./workflow";
 import {
   createPlan,
@@ -106,6 +107,10 @@ export class Agent {
     this.vault = new SecretVault(options.secrets);
     if (this.vault.enabled && options.vision)
       throw new Error("Vision cannot be enabled in a run containing secrets.");
+    if (options.webMCP && (this.vault.enabled || options.workflow))
+      throw new Error(
+        "WebMCP runs cannot use secret bindings or workflow replay.",
+      );
     if (this.vault.enabled && options.workflow)
       throw new Error(
         "Workflows cannot be recorded or replayed in a run containing secrets.",
@@ -360,7 +365,7 @@ export class Agent {
           .slice(current.started_at_action ?? state.history.length)
           .some(
             (entry) =>
-              entry.kind === "click" &&
+              entry.kind === check.action &&
               (check.ref
                 ? entry.ref === check.ref
                 : entry.action.trim() === check.label.trim()),
@@ -459,6 +464,10 @@ export class Agent {
             element.role === "combobox" ||
             element.operations.some(
               (op) => op === "TYPE_TEXT" || op === "SELECT",
+            )) &&
+          (check.kind !== "action" ||
+            element.operations.includes(
+              check.action === "tool" ? "CALL_TOOL" : "CLICK",
             )) &&
           (check.kind !== "action" ||
             !element.operations.some(
@@ -967,6 +976,18 @@ export class Agent {
     }
     let text: string | undefined;
     let helper: ModelCall | undefined;
+    if (action.kind === "tool") {
+      if (!(await this.browser.fresh(page, action)))
+        throw new StalePage("WebMCP tool changed before argument generation.");
+      this.activity("writing", action);
+      text = await toolInput(
+        action.tool,
+        `Current step: ${state.plan[state.plan_index]}\nUser goal: ${state.interpreted_goal ?? state.goal}`,
+        page,
+        (await this.settings()).text,
+        this.modelObserver("text"),
+      );
+    }
     if (action.kind === "fill") {
       if (!(await this.browser.fresh(page)))
         throw new StalePage("Page changed before text generation.");

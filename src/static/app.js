@@ -106,6 +106,8 @@ async function perform(fn, label) {
 }
 function actionTitle(action, text) {
   if (!action) return "No action selected";
+  if (action.kind === "tool")
+    return `Call tool ${action.label || action.action}${text ? ` · ${text}` : ""}`;
   if (action.kind === "fill")
     return `Type${text ? ` “${text}”` : ""} in ${action.label || action.action}`;
   if (action.kind === "select")
@@ -585,6 +587,11 @@ $("task-result").addEventListener("click", (event) => {
 function render() {
   if (!state) return;
   renderEvaluation();
+  $("webmcp-status").textContent = state.page?.webmcp
+    ? state.page.webmcp.available
+      ? `WebMCP · ${state.page.webmcp.tools} permitted tools in this page`
+      : "WebMCP unavailable in this Chromium; DOM actions remain available."
+    : "";
   $("vision-status").textContent = state.vision
     ? `Visual fallback · ${state.vision.attempts} attempts${state.vision.error ? ` · ${state.vision.error}` : ""}`
     : "";
@@ -791,6 +798,9 @@ $("task-form").addEventListener("submit", (event) => {
       goal: $("goal").value,
       url: $("start-url").value,
       vision: $("vision-enabled").checked,
+      ...($("webmcp-permissions").value.trim()
+        ? { webMCP: JSON.parse($("webmcp-permissions").value) }
+        : {}),
       ...($("profile-name").value.trim()
         ? { profile: $("profile-name").value.trim() }
         : {}),

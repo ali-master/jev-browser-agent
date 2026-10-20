@@ -2,6 +2,7 @@ import { Agent } from "./agent";
 import { workflowOptions } from "./workflow";
 import { outputCSV, validateSchema } from "./output";
 import { ProfileStore, SecretVault } from "./credentials";
+import { webMCPOptions } from "./webmcp";
 import {
   evaluateSuite,
   inspectorEvaluationCases,
@@ -383,6 +384,11 @@ export function startServer(
                 : { name: body.profile as string };
             if (profile) new ProfileStore(profile, url);
             new SecretVault(body.secrets);
+            const webMCP = webMCPOptions(body.webMCP);
+            if (webMCP && (body.secrets || body.workflow))
+              throw new Error(
+                "WebMCP runs cannot use secret bindings or workflow replay.",
+              );
             if (body.outputSchema !== undefined)
               validateSchema(body.outputSchema);
             const workflow =
@@ -419,6 +425,7 @@ export function startServer(
               filters: config.filters,
               workflow,
               vision: body.vision === true,
+              webMCP,
               profile,
               secrets: body.secrets as
                 import("./credentials").Secrets | undefined,
