@@ -6,7 +6,13 @@ import type {
   CDPSession,
 } from "playwright";
 import { httpUrl } from "./config";
-import type { Action, PageState } from "./types";
+import {
+  blockedUrlMatcher,
+  installNetworkFilters,
+  pageFilters,
+  PageFilterError,
+} from "./filters";
+import type { Action, PageState, PageFilters } from "./types";
 
 const READ_STATE = await Bun.file(
   new URL("./snapshot.js", import.meta.url),
@@ -25,6 +31,7 @@ export interface BrowserDriver {
   close(): Promise<void>;
 }
 export interface BrowserOptions {
+  filters?: PageFilters;
   headless?: boolean;
   cdpUrl?: string;
   /** Enable animated pointer events for an onPointer viewer. Defaults to false. */
@@ -76,6 +83,7 @@ export class Browser implements BrowserDriver {
     private context: BrowserContext,
     private session: CDPSession,
     private onPointer?: BrowserOptions["onPointer"],
+    private blockedUrl: (url: string) => boolean = () => false,
   ) {}
 
   static async create(
@@ -83,6 +91,12 @@ export class Browser implements BrowserDriver {
     options: BrowserOptions = {},
   ): Promise<Browser> {
     const targetUrl = httpUrl(url, "Page URL");
+    const filters = pageFilters(options.filters);
+    const blockedUrl = blockedUrlMatcher(filters.blockedUrls);
+    if (blockedUrl(targetUrl))
+      throw new PageFilterError(
+        "The starting URL is blocked by your browser filters.",
+      );
     let browser: PlaywrightBrowser;
     try {
       browser = options.cdpUrl
@@ -104,14 +118,35 @@ export class Browser implements BrowserDriver {
       context = await browser.newContext({
         viewport: { width: 1120, height: 780 },
         acceptDownloads: false,
+        serviceWorkers:
+          filters.blockAds || filters.blockedUrls.length ? "block" : "allow",
       });
+      if (filters.removeSelectors.length)
+        await context.addInitScript(
+          `Object.defineProperty(window,"__jevRemoveSelectors",{value:Object.freeze(${JSON.stringify(filters.removeSelectors)})});`,
+        );
       await context.addInitScript(`window.__jevLoadedScripts=new WeakSet();
         for(const type of ['load','error']) document.addEventListener(type,event=>{
           if(event.target instanceof HTMLScriptElement) window.__jevLoadedScripts.add(event.target);
         },true);`);
       const page = await context.newPage();
+      if (filters.removeSelectors.length) {
+        const validSelectors = await page.evaluate((selectors) => {
+          try {
+            for (const selector of selectors) document.querySelector(selector);
+            return true;
+          } catch {
+            return false;
+          }
+        }, filters.removeSelectors);
+        if (!validSelectors)
+          throw new PageFilterError(
+            "Invalid CSS selector in Remove elements. Fix the selector before starting a task.",
+          );
+      }
       if (options.headless === false) await page.bringToFront();
       const session = await context.newCDPSession(page);
+      await installNetworkFilters(page, session, filters, blockedUrl);
       await session.send("Emulation.setFocusEmulationEnabled", {
         enabled: true,
       });
@@ -130,10 +165,12 @@ export class Browser implements BrowserDriver {
         context,
         session,
         options.showPointer ? options.onPointer : undefined,
+        blockedUrl,
       );
     } catch (cause) {
       await context?.close().catch(() => {});
       await browser.close().catch(() => {});
+      if (cause instanceof PageFilterError) throw cause;
       const detail =
         cause instanceof errors.TimeoutError
           ? "The site did not respond within 30 seconds. Check the address and your connection, then try again."
@@ -227,6 +264,10 @@ export class Browser implements BrowserDriver {
           await Bun.sleep(100);
           continue;
         }
+        state.actions = state.actions.filter(
+          (action) =>
+            !("href" in action && action.href && this.blockedUrl(action.href)),
+        );
         state.fingerprint = fingerprint(state);
         this.observed = true;
         if (screenshot) await this.capture(state);
@@ -313,6 +354,10 @@ export class Browser implements BrowserDriver {
     page: PageState,
     text?: string,
   ): Promise<void | "popup_opened"> {
+    if ("href" in action && action.href && this.blockedUrl(action.href))
+      throw new PageFilterError(
+        "This link is blocked by your browser filters.",
+      );
     // Bun.deepEquals accepts null-prototype copies, unlike this input guard.
     if (!page.actions.some((observed) => isDeepStrictEqual(action, observed)))
       throw new Error("Action is not from the observed page.");

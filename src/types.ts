@@ -89,9 +89,18 @@ export interface Endpoint {
   model: string;
   pricing?: { inputUsdPerMillion: number; outputUsdPerMillion: number };
 }
+export interface PageFilters {
+  /** Block advertising requests using EasyList. Defaults to false. */
+  blockAds?: boolean;
+  /** Absolute HTTP(S) URLPattern strings, e.g. *://ads.example.com/*. */
+  blockedUrls?: string[];
+  /** CSS selectors to remove from the main document before each observation. */
+  removeSelectors?: string[];
+}
 export interface Settings {
   decision: Endpoint;
   text: Endpoint;
+  filters?: PageFilters;
 }
 export type SettingsReader = () => Promise<Settings>;
 export interface ChoiceAnswer {

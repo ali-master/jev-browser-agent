@@ -1,5 +1,11 @@
 (() => {
   if (!document.body) return null;
+  for (const selector of window.__jevRemoveSelectors ?? []) {
+    for (const element of document.querySelectorAll(selector)) {
+      if (["HTML", "HEAD", "BODY"].includes(element.tagName)) continue;
+      element.remove();
+    }
+  }
   const cache = (window.__jevFast ||= {
     ids: new WeakMap(),
     nodes: new Map(),

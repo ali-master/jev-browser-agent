@@ -127,7 +127,9 @@ export class Agent {
   ): Promise<Agent> {
     if (!goal.trim() || goal.length > 2000)
       throw new Error("Enter a goal of 1–2,000 characters.");
-    const browser = await Browser.create(url, options);
+    const settings = options.settings ?? (() => new SettingsStore().read());
+    const filters = options.filters ?? (await settings()).filters;
+    const browser = await Browser.create(url, { ...options, filters });
     try {
       const agent = new Agent(
         browser,
@@ -135,7 +137,7 @@ export class Agent {
           options.screenshots || Boolean(options.recordDir),
         ),
         goal,
-        options,
+        { ...options, settings },
       );
       await agent.record();
       return agent;

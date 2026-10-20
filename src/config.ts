@@ -2,6 +2,7 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { parseEnv } from "node:util";
 import type { Endpoint, Settings } from "./types";
+import { pageFilters } from "./filters";
 
 export function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -131,10 +132,16 @@ export class SettingsStore {
     }
     if (
       !object(value) ||
-      Object.keys(value).some((key) => !["decision", "text"].includes(key))
+      Object.keys(value).some(
+        (key) => !["decision", "text", "filters"].includes(key),
+      )
     )
       throw new Error("Invalid model settings.");
-    return { decision: endpoint(value.decision), text: endpoint(value.text) };
+    return {
+      decision: endpoint(value.decision),
+      text: endpoint(value.text),
+      filters: pageFilters(value.filters),
+    };
   }
   async publicSettings() {
     const settings = await this.read();
@@ -147,16 +154,21 @@ export class SettingsStore {
     return {
       decision: publicEndpoint(settings.decision),
       text: publicEndpoint(settings.text),
+      filters: settings.filters,
     };
   }
   async save(input: unknown) {
     if (
       !object(input) ||
-      Object.keys(input).some((key) => !["decision", "text"].includes(key))
+      Object.keys(input).some(
+        (key) => !["decision", "text", "filters"].includes(key),
+      )
     )
       throw new Error("Invalid model settings.");
     const previous = await this.read();
     const updated = { ...previous };
+    if (input.filters !== undefined)
+      updated.filters = pageFilters(input.filters);
     for (const key of ["decision", "text"] as const) {
       const patch = input[key];
       if (patch === undefined) continue;

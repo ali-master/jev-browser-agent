@@ -108,3 +108,48 @@ test.each([
   const { store } = await setup();
   await expect(store.save({ text: { pricing } })).rejects.toThrow("prices");
 });
+
+test("browser filters default off, persist independently and can be cleared", async () => {
+  const { store, directory } = await setup();
+  const defaults = { blockAds: false, blockedUrls: [], removeSelectors: [] };
+  expect((await store.read()).filters).toEqual(defaults);
+  const filters = {
+    blockAds: true,
+    blockedUrls: ["https://ads.example.com/*"],
+    removeSelectors: [" aside ", "aside", ".banner"],
+  };
+  await store.save({ decision: { apiKey: "secret" }, filters });
+  await store.save({ text: { model: "another-helper" } });
+  const restarted = new SettingsStore(directory, {});
+  expect((await restarted.publicSettings()).filters).toEqual({
+    ...filters,
+    removeSelectors: ["aside", ".banner"],
+  });
+  expect((await restarted.read()).decision.apiKey).toBe("secret");
+  await restarted.save({ filters: {} });
+  expect((await restarted.read()).filters).toEqual(defaults);
+});
+
+test.each([
+  null,
+  { blockAds: "yes" },
+  { blockedUrls: null },
+  { blockedUrls: ["javascript:alert(1)"] },
+  { blockedUrls: ["https://user:password@example.com/*"] },
+  { blockedUrls: ["https://example.com/#section"] },
+  { blockedUrls: ["ads.example.com"] },
+  { removeSelectors: [""] },
+  { removeSelectors: ["x".repeat(501)] },
+  { removeSelectors: Array(101).fill("aside") },
+  { removeSelectors: ["aside\nscript"] },
+  { unknown: true },
+])(
+  "rejects invalid browser filters without changing saved settings: %j",
+  async (filters) => {
+    const { store } = await setup();
+    await store.save({});
+    const before = await Bun.file(store.path).text();
+    await expect(store.save({ filters })).rejects.toThrow();
+    expect(await Bun.file(store.path).text()).toBe(before);
+  },
+);
