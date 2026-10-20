@@ -4,9 +4,21 @@ import { isDeepStrictEqual } from "node:util";
 import { Browser, StalePage } from "./browser";
 import type { BrowserDriver, BrowserOptions } from "./browser";
 import { SettingsStore } from "./config";
-import { actionSpace, choose, fieldContext, fieldText } from "./model";
+import {
+  actionSpace,
+  choose,
+  fieldContext,
+  fieldText,
+  goalIdentifier,
+} from "./model";
 import { MAX_STEPS } from "./questions";
-import { createPlan, reviewCompletion, updateProgress } from "./plan";
+import {
+  createPlan,
+  interpretGoal,
+  reviewCompletion,
+  sameInputs,
+  updateProgress,
+} from "./plan";
 import { summarizeUsage } from "./usage";
 import type {
   Action,
@@ -15,6 +27,7 @@ import type {
   HistoryEntry,
   ModelCall,
   ModelRole,
+  PageState,
   SettingsReader,
   TaskStep,
 } from "./types";
@@ -44,6 +57,7 @@ export class Agent {
   readonly state: AgentState;
   readonly maxSteps: number;
   private startedAt: number | null = null;
+  private readonly taskTime = new Date().toString();
   private busy = false;
   private pendingText: { key: string; text: string; helper: ModelCall } | null =
     null;
@@ -59,7 +73,13 @@ export class Agent {
   } | null = null;
   private revisionCount = 0;
   private reviewCount = 0;
+  private budgetActionCount = 0;
   private lastWaitRecovery = 0;
+  private planningDocument = "";
+  private readonly readSources = new Map<
+    string,
+    Pick<PageState, "url" | "title" | "text">
+  >();
 
   constructor(
     readonly browser: BrowserDriver,
@@ -127,6 +147,7 @@ export class Agent {
   snapshot() {
     return structuredClone({
       ...this.state,
+      read_sources: [...this.readSources.values()],
       elements: actionSpace(this.state.page.actions).elements,
       max_steps: this.maxSteps,
       usage: summarizeUsage(this.state.model_calls),
@@ -168,6 +189,7 @@ export class Agent {
       throw new Error("This run has stopped. Start a fresh run.");
     this.busy = true;
     this.startedAt ??= performance.now();
+    const actionsBefore = this.state.history.length;
     try {
       if (name === "predict" || name === "tick") await this.predict();
       if ((name === "act" || name === "tick") && !stopped(this.state))
@@ -178,22 +200,30 @@ export class Agent {
       this.state.decision = null;
       if (error instanceof StalePage) {
         this.state.status = "ready";
-        if (name !== "tick") throw error;
-        try {
-          this.acceptObservation(
-            await this.browser.observe(
-              this.options.screenshots || this.state.record,
-            ),
-          );
-          if (this.state.checkpoints.length) await this.progress();
-        } catch (recoveryError) {
-          this.state.status = "error";
-          this.state.stop_reason = {
-            code: "observation_failed",
-            message:
-              "Could not recover the page observation. Inspect the last action before starting a fresh task.",
-          };
-          throw recoveryError;
+        // A stale manual choice is rejected; an executed input is only reobserved.
+        if (name === "act" && this.state.history.length === actionsBefore)
+          throw error;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            this.activity("observing");
+            this.acceptObservation(
+              await this.browser.observe(
+                this.options.screenshots || this.state.record,
+              ),
+            );
+            if (!stopped(this.state) && this.state.checkpoints.length)
+              await this.progress();
+            break;
+          } catch (recoveryError) {
+            if (recoveryError instanceof StalePage && attempt < 2) continue;
+            this.state.status = "error";
+            this.state.stop_reason = {
+              code: "observation_failed",
+              message:
+                "Could not recover the page observation. Inspect the last action before starting a fresh task.",
+            };
+            throw recoveryError;
+          }
         }
       } else {
         if (this.state.status !== "blocked") this.state.status = "error";
@@ -224,12 +254,21 @@ export class Agent {
       );
     if (!state.checkpoints.length) {
       this.activity("planning");
+      state.interpreted_goal ??= await interpretGoal(
+        state.goal,
+        async () => (await this.settings()).text,
+        this.modelObserver("planning"),
+        this.taskTime,
+      );
       const { steps } = await createPlan(
         state.page,
-        state.goal,
+        state.interpreted_goal,
         async () => (await this.settings()).text,
         state.planning_calls,
         this.modelObserver("planning"),
+        undefined,
+        this.taskTime,
+        state.goal,
       );
       this.setRemaining(steps);
     }
@@ -237,18 +276,151 @@ export class Agent {
     if (stopped(state)) return;
     await this.recoverWaiting();
     if (stopped(state)) return;
-    const current = state.checkpoints[state.plan_index]!;
+    let current = state.checkpoints[state.plan_index]!;
     const elements = actionSpace(state.page.actions).elements;
+    const navigation = current.checks.filter(
+      (check) => check.kind === "action",
+    );
+    const destination = current.checks.find((check) => check.kind === "url");
+    if (
+      navigation.length === 1 &&
+      !navigation[0]!.ref &&
+      destination?.kind === "url" &&
+      (/[/#]/.test(destination.includes) ||
+        /^[\p{L}\p{N}_-]{3,}$/u.test(destination.includes)) &&
+      !elements.some(
+        (element) => element.label.trim() === navigation[0]!.label.trim(),
+      )
+    ) {
+      const path = new RegExp(
+        `${/[/#]/.test(destination.includes) ? "" : "/"}${RegExp.escape(destination.includes)}(?:[/?#]|$)`,
+      );
+      const links = elements.filter(
+        (element) => element.href && path.test(element.href),
+      );
+      if (links.length === 1) {
+        navigation[0]!.label = links[0]!.label;
+        navigation[0]!.ref = links[0]!.ref ?? null;
+        navigation[0]!.scope = links[0]!.scope || null;
+      }
+    }
+    const awaitingAction = current.checks.some(
+      (check) =>
+        check.kind === "action" &&
+        !state.history
+          .slice(current.started_at_action ?? state.history.length)
+          .some(
+            (entry) =>
+              entry.kind === "click" &&
+              (check.ref
+                ? entry.ref === check.ref
+                : entry.action.trim() === check.label.trim()),
+          ),
+    );
+    const lastAction = state.history.at(-1);
+    const revealedTarget =
+      !awaitingAction &&
+      navigation.length > 0 &&
+      destination?.kind === "url" &&
+      !state.page.url.includes(destination.includes) &&
+      lastAction?.kind === "click" &&
+      lastAction.page_changed
+        ? state.checkpoints
+            .slice(state.plan_index + 1)
+            .flatMap((step) => step.checks)
+            .find(
+              (check) =>
+                "label" in check &&
+                elements.some((element) => element.label === check.label),
+            )
+        : undefined;
+    const atScrollEnd =
+      lastAction?.kind === "scroll" &&
+      ((lastAction.operation === "SCROLL_DOWN" &&
+        state.page.scroll.y + state.page.h >= state.page.scroll.height - 2) ||
+        (lastAction.operation === "SCROLL_UP" && state.page.scroll.y <= 2));
+    if (
+      revealedTarget ||
+      ((this.planningDocument !== state.page.document_id || atScrollEnd) &&
+        current.checks.some((check) =>
+          "label" in check
+            ? !elements.some((element) =>
+                check.ref
+                  ? element.ref === check.ref ||
+                    element.popup_owner === check.ref
+                  : element.label.trim() === check.label.trim(),
+              )
+            : check.kind === "url"
+              ? !awaitingAction && !state.page.url.includes(check.includes)
+              : check.kind === "title"
+                ? !awaitingAction && !state.page.title.includes(check.includes)
+                : atScrollEnd &&
+                  !awaitingAction &&
+                  check.kind === "text" &&
+                  !`${state.page.text}\n${state.page.read_text ?? ""}`.includes(
+                    check.includes,
+                  ),
+        ))
+    ) {
+      if (
+        await this.replanRemaining(
+          revealedTarget && "label" in revealedTarget
+            ? `The previous click "${lastAction!.action}" revealed the planned control "${revealedTarget.label}" without navigating. It opened a menu instead of reaching the guessed URL. Continue from the revealed control; remove unnecessary intermediate navigation expectations and do not repeat the opener. Preserve every ORIGINAL goal requirement.`
+            : atScrollEnd
+              ? "Scrolling reached the page boundary but a required control or text check is absent. Correct the remaining checklist using actual observed labels and read text, not invented field headings. Preserve all requirements."
+              : "Navigation revealed the destination page. Ground remaining requirements in its actual controls instead of earlier guessed labels. If this page shows an empty search form instead of results, restore the requested query and submit it; inputs verified on the previous page do not populate this new form.",
+        )
+      ) {
+        await this.progress();
+        if (stopped(state)) return;
+        current = state.checkpoints[state.plan_index]!;
+      } else if (atScrollEnd) {
+        state.status = "blocked";
+        state.stop_reason = {
+          code: "no_progress",
+          message:
+            "The required control was not found after scrolling and two checklist repairs. Refine the task or inspect the page; it has not been marked complete.",
+        };
+        return;
+      }
+    }
     // Future steps may revisit the same label in a different document.
+    const requiredForms = new Set(
+      elements
+        .filter(
+          (element) =>
+            element.form_ref &&
+            current.checks.some(
+              (check) =>
+                check.kind === "value" &&
+                (check.ref
+                  ? check.ref === element.ref
+                  : check.label === element.label),
+            ),
+        )
+        .map((element) => element.form_ref),
+    );
     for (const check of current.checks) {
       if (!("label" in check) || check.ref) continue;
       const matches = elements.filter(
         (element) =>
           element.label.trim().replace(/\s+/g, " ") ===
             check.label.trim().replace(/\s+/g, " ") &&
+          (check.kind !== "value" ||
+            element.role === "combobox" ||
+            element.operations.some(
+              (op) => op === "TYPE_TEXT" || op === "SELECT",
+            )) &&
+          (check.kind !== "action" ||
+            !element.operations.some(
+              (op) => op === "TYPE_TEXT" || op === "SELECT",
+            )) &&
           (!check.scope ||
             element.scope?.trim().replace(/\s+/g, " ") ===
-              check.scope.trim().replace(/\s+/g, " ")),
+              check.scope.trim().replace(/\s+/g, " ")) &&
+          (check.kind !== "action" ||
+            !requiredForms.size ||
+            requiredForms.has(element.form_ref)),
       );
       if (matches.length === 1 && matches[0]!.ref) {
         check.ref = matches[0]!.ref;
@@ -260,6 +432,7 @@ export class Agent {
         "ref" in check &&
         check.ref &&
         !elements.some((element) => element.ref === check.ref) &&
+        !elements.some((element) => element.popup_owner === check.ref) &&
         elements.some(
           (element) =>
             element.label.trim().replace(/\s+/g, " ") ===
@@ -301,6 +474,8 @@ export class Agent {
       false,
       this.modelObserver("decision"),
       state.checkpoints[state.plan_index]!.checks,
+      state.checkpoints[state.plan_index]!.started_at_action ??
+        state.history.length,
     );
     this.selection = {
       fingerprint: observed.fingerprint,
@@ -319,6 +494,14 @@ export class Agent {
 
   private async progress() {
     const state = this.state;
+    const changedInputs = state.history.filter(
+      (entry) => entry.page_changed && !["wait", "scroll"].includes(entry.kind),
+    ).length;
+    if (changedInputs > this.budgetActionCount) {
+      this.budgetActionCount = changedInputs;
+      this.revisionCount = 0;
+      this.reviewCount = 0;
+    }
     if (!(await this.browser.fresh(state.page)))
       throw new StalePage("Page changed before checkpoint verification.");
     state.plan_index = updateProgress(
@@ -342,10 +525,14 @@ export class Agent {
       this.activity("verifying");
       const review = await reviewCompletion(
         state.page,
-        state.goal,
+        state.interpreted_goal ?? state.goal,
         state.checkpoints,
         async () => (await this.settings()).text,
         this.modelObserver("verification"),
+        this.taskTime,
+        state.goal,
+        state.history,
+        [...this.readSources.values()],
       );
       state.completion_reviews.push(review);
       if (!(await this.browser.fresh(state.page)))
@@ -373,17 +560,28 @@ export class Agent {
   }
 
   private setRemaining(steps: TaskStep[]) {
+    this.planningDocument = this.state.page.document_id;
+    const attempted = this.state.checkpoints[this.state.plan_index];
     const completed = this.state.checkpoints
       .slice(0, this.state.plan_index)
       .filter((step) => step.verified);
     this.state.checkpoints = [
       ...completed,
-      ...steps.map((step) => ({
-        ...step,
-        started_at_action: null,
-        started_fingerprint: null,
-        verified: null,
-      })),
+      ...steps.map((step, index) => {
+        // Repairing an outcome must not replay the same input with unchanged constraints.
+        const retain =
+          index === 0 &&
+          attempted &&
+          !attempted.verified &&
+          step.checks.some((check) => check.kind === "action") &&
+          sameInputs(step, attempted);
+        return {
+          ...step,
+          started_at_action: retain ? attempted.started_at_action : null,
+          started_fingerprint: retain ? attempted.started_fingerprint : null,
+          verified: null,
+        };
+      }),
     ];
     this.state.plan = this.state.checkpoints.map((step) => step.instruction);
     this.state.plan_index = completed.length;
@@ -407,7 +605,7 @@ export class Agent {
     this.activity("planning");
     const { steps } = await createPlan(
       state.page,
-      state.goal,
+      state.interpreted_goal ?? state.goal,
       async () => (await this.settings()).text,
       state.planning_calls,
       this.modelObserver("planning"),
@@ -417,6 +615,8 @@ export class Agent {
         reason,
         recent_actions: state.history.slice(-6),
       },
+      this.taskTime,
+      state.goal,
     );
     this.revise(reason, steps);
     return true;
@@ -583,13 +783,17 @@ export class Agent {
           "u",
         ).test(state.goal)
       ) {
-        text = check.equals;
+        text =
+          action.role === "combobox"
+            ? (goalIdentifier(check.equals, state.goal) ?? check.equals)
+            : check.equals;
       } else {
         const context = fieldContext(
-          `${state.plan[state.plan_index]}\nOriginal goal: ${state.goal}`,
+          `${state.plan[state.plan_index]}\nGoal: ${state.interpreted_goal ?? state.goal}\nOriginal goal: ${state.goal}`,
           action,
           page,
           state.history,
+          state.goal,
         );
         const config = (await this.settings()).text;
         const key = JSON.stringify({ context, config });
@@ -623,23 +827,31 @@ export class Agent {
       }
     }
     this.activity("acting", action, text);
-    await this.browser.act(action, page, text);
+    const outcome = await this.browser.act(action, page, text);
+    const executed =
+      outcome === "popup_opened" && "node" in action
+        ? (page.actions.find(
+            (candidate) =>
+              candidate.kind === "click" && candidate.node === action.node,
+          ) ?? { ...action, kind: "click" as const })
+        : action;
+    if (outcome === "popup_opened") text = undefined;
     this.pendingText = null;
     state.elapsed_ms = this.elapsed();
-    const entry = {
+    const entry: HistoryEntry = {
       step: state.history.length + 1,
-      action: action.label,
+      action: executed.label,
       ref: "node" in action ? action.ref : undefined,
       scope: "node" in action ? action.scope : undefined,
-      kind: action.kind,
-      choice: decision.choice,
+      kind: executed.kind,
+      choice: executed.id,
       probability: decision.probabilities[decision.choice]!,
       confidence: decision.confidence,
       latency_ms: decision.latency_ms,
       text: text ?? null,
       text_helper: helper?.model ?? null,
       text_latency_ms: helper?.latency_ms ?? 0,
-      operation: decision.operation,
+      operation: outcome === "popup_opened" ? "CLICK" : decision.operation,
       target: decision.target,
       page_changed: null as boolean | null,
       url: page.url,
@@ -658,6 +870,17 @@ export class Agent {
   }
 
   private acceptObservation(page: AgentState["page"]) {
+    const previous = this.state.page;
+    if (previous.url !== page.url) {
+      this.readSources.set(previous.url, {
+        url: previous.url,
+        title: previous.title,
+        text: previous.read_text || previous.text,
+      });
+      // Bound retained pages; missing evidence must be revisited, never assumed.
+      if (this.readSources.size > 12)
+        this.readSources.delete(this.readSources.keys().next().value!);
+    }
     this.state.page = page;
     if (!this.pendingObservation) return;
     const { entry, content } = this.pendingObservation;

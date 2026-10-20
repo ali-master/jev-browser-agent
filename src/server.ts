@@ -1,5 +1,5 @@
 import { Agent } from "./agent";
-import { Browser } from "./browser";
+import { Browser, StalePage } from "./browser";
 import type { AgentPointer } from "./browser";
 import { SettingsStore, object } from "./config";
 import { MAX_STEPS } from "./questions";
@@ -353,6 +353,7 @@ export function startServer(
         return json(
           {
             error: lastError,
+            ...(error instanceof StalePage ? { code: "stale_page" } : {}),
           },
           400,
         );

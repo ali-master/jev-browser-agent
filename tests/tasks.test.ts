@@ -11,7 +11,11 @@ afterEach(async () => {
 async function task(
   mode:
     "ordered" | "omitted" | "unseen" | "wrong-waypoint" | "invented-evidence",
+  goal = mode === "omitted"
+    ? "Open HTML then CSS."
+    : "Open HTML, then CSS, then JavaScript. Explain what each technology does.",
 ) {
+  const taskTimes: string[] = [];
   const visits: string[] = [];
   const pages: Record<string, [string, string, string]> = {
     "/": [
@@ -61,11 +65,28 @@ async function task(
     const body = await request.json();
     if (new URL(request.url).pathname.endsWith("chat/completions")) {
       const payload = JSON.parse(body.messages[1].content);
+      if (body.response_format.json_schema.name === "goal_translation")
+        return chatResponse({ translation: "Then open CSS." });
+      expect(payload.original_goal).toBe(goal);
+      expect(Number.isNaN(Date.parse(payload.task_time))).toBe(false);
+      taskTimes.push(payload.task_time);
       if (body.response_format.json_schema.name === "completion_review") {
         reviews++;
+        expect(payload.executed_actions[0]).toMatchObject({
+          kind: "click",
+          action: "HTML",
+          page_changed: true,
+        });
         if (
           mode === "omitted" &&
-          !payload.checkpoints.some((s: any) => s.instruction === "Open CSS")
+          !payload.checkpoints.some(
+            (s: any) =>
+              s.verified &&
+              s.checks.some(
+                (check: any) =>
+                  check.kind === "url" && check.includes === "/css",
+              ),
+          )
         ) {
           return chatResponse({
             complete: false,
@@ -124,7 +145,12 @@ async function task(
       : instruction.includes("Open CSS")
         ? "Learn CSS"
         : "JavaScript";
-    if (mode === "wrong-waypoint" && decisions === 1) label = "JavaScript";
+    if (mode === "wrong-waypoint" && decisions === 1) {
+      expect(elements.some((element) => element.label === "JavaScript")).toBe(
+        false,
+      );
+      return Response.json(decisionResponse(req, "CLICK", "2"));
+    }
     const target = elements.find((element) => element.label === label);
     const blocked =
       !target || (mode === "unseen" && planning === 1 && label === "Learn CSS");
@@ -133,10 +159,6 @@ async function task(
     );
   });
   cleanup.push(() => models.server.stop(true));
-  const goal =
-    mode === "omitted"
-      ? "Open HTML then CSS."
-      : "Open HTML, then CSS, then JavaScript. Explain what each technology does.";
   const agent = await Agent.create(`http://127.0.0.1:${site.port}`, goal, {
     settings: async () => models.settings,
     maxSteps: 8,
@@ -150,7 +172,7 @@ async function task(
   } catch (error) {
     failure = error;
   }
-  return { agent, visits, planning, reviews, decisions, failure };
+  return { agent, visits, planning, reviews, decisions, failure, taskTimes };
 }
 
 test("multi-page task preserves waypoint order and returns a sourced answer", async () => {
@@ -167,15 +189,19 @@ test("multi-page task preserves waypoint order and returns a sourced answer", as
   );
 });
 
-test("an omitted goal requirement is completed before DONE", async () => {
-  const result = await task("omitted");
-  expect(result.failure).toBeUndefined();
-  expect(result.visits).toEqual(["/", "/html", "/css"]);
-  expect(result.reviews).toBe(2);
-  expect(result.agent.state.plan_revisions).toHaveLength(1);
-  expect(result.agent.state.checkpoints).toHaveLength(2);
-  expect(result.agent.state.status).toBe("done");
-});
+test.each(["Open HTML then CSS.", "Open HTML.\nبعدش صفحه CSS رو باز کن."])(
+  "an omitted requirement is completed before DONE: %s",
+  async (goal) => {
+    const result = await task("omitted", goal);
+    expect(result.failure).toBeUndefined();
+    expect(result.visits).toEqual(["/", "/html", "/css"]);
+    expect(result.reviews).toBe(goal.includes("\n") ? 4 : 2);
+    expect(result.agent.state.plan_revisions).toHaveLength(1);
+    expect(result.agent.state.checkpoints).toHaveLength(2);
+    expect(result.agent.state.status).toBe("done");
+    expect(new Set(result.taskTimes).size).toBe(1);
+  },
+);
 
 test("unseen destination controls replan only remaining work and retain prior evidence", async () => {
   const result = await task("unseen");

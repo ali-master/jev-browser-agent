@@ -48,8 +48,12 @@ async function call(name, body = {}) {
     body: JSON.stringify(body),
   });
   const data = await response.json();
-  if (!response.ok) throw Error(data.error || "Request failed");
+  if (!response.ok)
+    throw Object.assign(Error(data.error || "Request failed"), {
+      code: data.code,
+    });
   applyState(data);
+  if (!data.error) $("error").hidden = true;
   return data;
 }
 function controls() {
@@ -113,6 +117,8 @@ function stepTitle(step) {
   if (check?.kind === "value") return `Set ${check.label} to “${check.equals}”`;
   if (check?.kind === "checked")
     return `${check.equals ? "Enable" : "Disable"} ${check.label}`;
+  if (check?.kind === "expanded")
+    return `${check.equals ? "Open" : "Close"} ${check.label}`;
   if (check?.kind === "action") return `Click ${check.label}`;
   return step.instruction;
 }
@@ -527,15 +533,23 @@ setInterval(renderTime, 250);
 async function runAutomatically() {
   automatic = true;
   paused = false;
+  let staleRetries = 0;
   render();
   try {
     for (let i = 0; i < state.max_steps * 2 && automatic && !stopped(); i++) {
       if (!state.decision) await call("predict");
       if (!automatic || stopped()) break;
+      if (!state.decision) continue;
       if ($("pace").checked)
         await new Promise((resolve) => setTimeout(resolve, 1200));
       if (!automatic) break;
-      await call("act", { fingerprint: state.page.fingerprint });
+      try {
+        await call("act", { fingerprint: state.page.fingerprint });
+        staleRetries = 0;
+      } catch (error) {
+        if (error.code !== "stale_page" || ++staleRetries > 2) throw error;
+        state.decision = null;
+      }
     }
   } finally {
     automatic = false;

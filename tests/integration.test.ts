@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { chromium } from "playwright";
 import { Agent } from "../src/agent";
-import type { Browser } from "../src/browser";
+import { Browser, StalePage } from "../src/browser";
 import { SettingsStore } from "../src/config";
 import { startServer } from "../src/server";
 import {
@@ -127,7 +127,7 @@ function mockModels(beforeDecision?: () => Promise<void>) {
       elements: ElementView[];
       page: { text: string };
     };
-    const city = state.elements.find((element) => element.label === "City")!;
+    const city = state.elements.find((element) => element.label === "City");
     const category = state.elements.find(
       (element) => element.label === "Category",
     );
@@ -136,7 +136,7 @@ function mockModels(beforeDecision?: () => Promise<void>) {
     );
     let operation: string,
       target = "";
-    if (city.value !== "Lisbon") {
+    if (city && city.value !== "Lisbon") {
       operation = "TYPE_TEXT";
       target = city.index;
     } else if (design) {
@@ -452,6 +452,117 @@ test("live inspector shows a pending model call and pauses before executing its 
     release();
   }
 }, 15_000);
+
+test("automatic inspector resumes stale prediction, pre-input and post-input races without replay", async () => {
+  let executions = 0,
+    predictionRace = true,
+    inputRaces = 2,
+    verificationRaces = 2;
+  const act = Browser.prototype.act;
+  const inputProbe = spyOn(Browser.prototype, "act").mockImplementation(
+    async function (this: Browser, ...args) {
+      if (inputRaces > 0) {
+        inputRaces--;
+        throw new StalePage("Page changed since this decision. Observe again.");
+      }
+      return act.apply(this, args);
+    },
+  );
+  const fresh = Browser.prototype.fresh;
+  const probe = spyOn(Browser.prototype, "fresh").mockImplementation(
+    async function (this: Browser, page, action) {
+      if (!action && !executions && predictionRace) {
+        predictionRace = false;
+        throw new StalePage("Navigation during prediction");
+      }
+      if (!action && executions === 1 && verificationRaces > 0) {
+        verificationRaces--;
+        return false;
+      }
+      return fresh.call(this, page, action);
+    },
+  );
+  cleanup.push(() => {
+    probe.mockRestore();
+    inputProbe.mockRestore();
+  });
+  const models = mockModels();
+  const store = new SettingsStore(await temporary(), {});
+  await store.save(models.settings);
+  const inspector = startServer({
+    port: 0,
+    settings: store,
+    onUpdate(state) {
+      executions = state.history.length;
+    },
+  });
+  cleanup.push(() => inspector.close());
+  const browser = await chromium.launch();
+  cleanup.push(() => browser.close());
+  const page = await browser.newPage();
+  const failures: string[] = [];
+  page.on("response", (response) => {
+    if (!response.ok()) failures.push(response.url());
+  });
+  await page.goto(inspector.url);
+  await page.locator("#scenario").selectOption("custom");
+  await page.locator("#start-url").fill(localSite());
+  await page.locator("#goal").fill("Search for Design hotels in Lisbon");
+  await page.locator("#start").click();
+  await page.waitForFunction(
+    () => document.querySelector("#phase-label")?.textContent === "COMPLETE",
+  );
+  const state = await (await fetch(`${inspector.url}/api/state`)).json();
+  expect(state.error).toBeNull();
+  expect(await page.locator("#error").isVisible()).toBe(false);
+  expect(state.history.map((entry: any) => entry.operation)).toEqual([
+    "TYPE_TEXT",
+    "SELECT",
+    "CLICK",
+  ]);
+  expect(state.page.text).toContain("Results: Lisbon / Design");
+  expect(models.counts.decisions).toBe(5);
+  expect(predictionRace).toBe(false);
+  expect(inputRaces).toBe(0);
+  expect(verificationRaces).toBe(0);
+  expect(failures).toEqual(Array(2).fill(`${inspector.url}/api/act`));
+}, 15_000);
+
+test.each([
+  { error: new StalePage("Page keeps changing"), attempts: 3 },
+  { error: new Error("Browser connection lost"), attempts: 1 },
+])(
+  "automatic inspector bounds retries for $error",
+  async ({ error, attempts }) => {
+    const inputProbe = spyOn(Browser.prototype, "act").mockRejectedValue(error);
+    cleanup.push(() => inputProbe.mockRestore());
+    const models = mockModels();
+    const store = new SettingsStore(await temporary(), {});
+    await store.save(models.settings);
+    const inspector = startServer({ port: 0, settings: store });
+    cleanup.push(() => inspector.close());
+    const browser = await chromium.launch();
+    cleanup.push(() => browser.close());
+    const page = await browser.newPage();
+    await page.goto(inspector.url);
+    await page.locator("#scenario").selectOption("custom");
+    await page.locator("#start-url").fill(localSite());
+    await page.locator("#goal").fill("Search for Design hotels in Lisbon");
+    await page.locator("#pace").uncheck();
+    await page.locator("#start").click();
+    await page.locator("#error").waitFor({ state: "visible" });
+    await page.waitForFunction(
+      () => !(document.querySelector("#start") as HTMLButtonElement).disabled,
+    );
+    expect(await page.locator("#error").textContent()).toBe(error.message);
+    expect(inputProbe).toHaveBeenCalledTimes(attempts);
+    expect(models.counts.decisions).toBe(attempts);
+    const state = await (await fetch(`${inspector.url}/api/state`)).json();
+    expect(state.history).toHaveLength(0);
+    expect(state.status).not.toBe("done");
+  },
+  15_000,
+);
 
 test("inspector rejects foreign origins, hosts, missing tokens, malformed JSON and unknown routes", async () => {
   const inspector = startServer({

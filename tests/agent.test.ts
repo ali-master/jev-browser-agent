@@ -50,7 +50,7 @@ function runner(
   const driver = {
     fresh: mock(async () => true),
     observe: mock(async () => structuredClone(state)),
-    act: mock(async (_action: Action) => {}),
+    act: mock(async (_action: Action): Promise<void | "popup_opened"> => {}),
     close: mock(async () => {}),
   };
   const agent = new Agent(driver, state, "Find hotels in Lisbon", {
@@ -76,6 +76,365 @@ test("consumes a stale decision before any mutation or text request", async () =
   expect(textCalls()).toBe(0);
   expect(agent.state.decision).toBeNull();
 });
+
+test("an apparent navigation link revealing the next target is replanned without waiting or replaying it", async () => {
+  const state = page();
+  state.actions = [
+    { id: "menu", node: 1, kind: "click", role: "link", label: "Topics" },
+  ];
+  const destination: TaskStep = {
+    instruction: "Open Venus",
+    checks: [
+      { kind: "action", label: "Venus", action: "click" },
+      { kind: "url", includes: "/venus" },
+    ],
+  };
+  let plans = 0;
+  const transport = provider(async (request) => {
+    const body = await request.json();
+    if (new URL(request.url).pathname.endsWith("chat/completions")) {
+      plans++;
+      if (plans === 2)
+        expect(JSON.parse(body.messages[1].content).progress.reason).toContain(
+          "revealed",
+        );
+      return chatResponse({
+        steps:
+          plans === 1
+            ? [
+                {
+                  instruction: "Open Topics",
+                  checks: [
+                    { kind: "action", label: "Topics", action: "click" },
+                    { kind: "url", includes: "/topics" },
+                  ],
+                },
+                destination,
+              ]
+            : [destination],
+      });
+    }
+    return Response.json(decisionResponse(body, "CLICK", "1"));
+  });
+  servers.push(transport.server);
+  const agent = new Agent(
+    {
+      fresh: async () => true,
+      observe: async () => structuredClone(state),
+      close: async () => {},
+      act: async () => {
+        state.fingerprint = "menu-opened";
+        state.text = "Venus";
+        state.actions = [
+          {
+            id: "venus",
+            node: 2,
+            kind: "click",
+            role: "link",
+            label: "Venus",
+            href: "https://example.test/venus",
+          },
+        ];
+      },
+    },
+    structuredClone(state),
+    "Open Venus",
+    { settings: async () => transport.settings },
+  );
+  await agent.command("tick");
+  await agent.command("predict");
+  expect(plans).toBe(2);
+  expect(agent.state.history.map((entry) => entry.action)).toEqual(["Topics"]);
+  expect(agent.state.decision?.choice).toBe("venus");
+});
+
+test("an exact observed destination resolves a shortened link label without matching a longer ID", async () => {
+  const { agent } = runner("CLICK", "1", 60, [
+    {
+      instruction: "Open the requested book",
+      checks: [
+        { kind: "action", label: "Book title", action: "click" },
+        { kind: "url", includes: "/books/42" },
+      ],
+    },
+  ]);
+  agent.state.page.actions = [
+    {
+      id: "book",
+      kind: "click",
+      node: 2,
+      ref: "fixture-document:2",
+      role: "link",
+      label: "Book title Author 100 downloads",
+      href: "https://example.test/books/42",
+    },
+    {
+      id: "other",
+      kind: "click",
+      node: 3,
+      ref: "fixture-document:3",
+      role: "link",
+      label: "Another book",
+      href: "https://example.test/books/420",
+    },
+  ];
+  await agent.command("predict");
+  expect(agent.state.decision?.choice).toBe("book");
+  expect(agent.state.checkpoints[0]!.checks[0]).toMatchObject({
+    label: "Book title Author 100 downloads",
+    ref: "fixture-document:2",
+  });
+});
+
+test("navigation retains actually read text independently of checkpoint evidence", async () => {
+  const { agent, driver } = runner("CLICK", "1", 60, [
+    {
+      instruction: "Open the next article",
+      checks: [
+        { kind: "action", label: "Next", action: "click" },
+        { kind: "url", includes: "/next" },
+      ],
+    },
+  ]);
+  agent.state.page.read_text = "Fact read after the first checkpoint.";
+  agent.state.page.actions = [
+    { id: "next", kind: "click", node: 1, role: "link", label: "Next" },
+  ];
+  driver.observe.mockResolvedValue({
+    ...page(),
+    url: "https://example.test/next",
+    fingerprint: "next",
+  });
+  await agent.command("tick");
+  expect(agent.snapshot().read_sources).toEqual([
+    {
+      url: "https://example.test/",
+      title: "Search",
+      text: "Fact read after the first checkpoint.",
+    },
+  ]);
+});
+
+test("a field that opens a picker records only its actual click, not an unexecuted fill", async () => {
+  const { agent, driver } = runner();
+  driver.act.mockResolvedValue("popup_opened");
+  await agent.command("tick");
+  expect(agent.state.history).toHaveLength(1);
+  expect(agent.state.history[0]).toMatchObject({
+    kind: "click",
+    operation: "CLICK",
+    text: null,
+  });
+  expect(driver.act).toHaveBeenCalledTimes(1);
+  expect(agent.state.status).not.toBe("done");
+});
+
+test("an invented control at the scroll boundary is repaired with actual labels", async () => {
+  let planning = 0;
+  const transport = provider(async (request) => {
+    const body = await request.json();
+    if (new URL(request.url).pathname.endsWith("chat/completions")) {
+      planning++;
+      if (planning === 2)
+        expect(JSON.parse(body.messages[1].content).progress.reason).toContain(
+          "page boundary",
+        );
+      return chatResponse({
+        steps: [
+          {
+            instruction: "Dismiss the notice",
+            checks: [
+              {
+                kind: "action",
+                label: planning === 1 ? "Dismiss" : "Reject all",
+                action: "click",
+              },
+              { kind: "url", includes: "/search" },
+            ],
+          },
+        ],
+      });
+    }
+    return Response.json(
+      decisionResponse(
+        body,
+        body.questions.click_target ? "CLICK" : "SCROLL_DOWN",
+        "1",
+      ),
+    );
+  });
+  servers.push(transport.server);
+  const state = page();
+  state.scroll.height = 1200;
+  state.actions = [
+    { id: "scroll_down", kind: "scroll", label: "Scroll down", delta: 600 },
+  ];
+  const driver = {
+    fresh: async () => true,
+    observe: async () => structuredClone(state),
+    close: async () => {},
+    act: async () => {
+      state.scroll.y = state.scroll.height - state.h;
+      state.actions = [
+        {
+          id: "reject",
+          kind: "click",
+          node: 1,
+          ref: "fixture-document:1",
+          role: "button",
+          label: "Reject all",
+        },
+      ];
+    },
+  };
+  const agent = new Agent(
+    driver,
+    structuredClone(state),
+    "Reject optional cookies and open search",
+    { settings: async () => transport.settings },
+  );
+  await agent.command("tick");
+  await agent.command("predict");
+  expect(planning).toBe(2);
+  expect(agent.state.decision?.choice).toBe("reject");
+  expect(agent.state.history).toHaveLength(1);
+});
+
+test("an invented reading heading is repaired at the scroll boundary using observed text", async () => {
+  let planning = 0;
+  const transport = provider(async (request) => {
+    const body = await request.json();
+    if (body.response_format?.json_schema?.name === "completion_review")
+      return completionResponse(body);
+    if (body.messages) {
+      planning++;
+      if (planning === 2)
+        expect(JSON.parse(body.messages[1].content).page.text).toContain(
+          "Observed book",
+        );
+      return chatResponse({
+        steps: [
+          {
+            instruction: "Read the full title",
+            checks: [
+              {
+                kind: "text",
+                includes: planning === 1 ? "Full Title" : "Observed book",
+              },
+            ],
+          },
+        ],
+      });
+    }
+    return Response.json(decisionResponse(body, "SCROLL_DOWN"));
+  });
+  servers.push(transport.server);
+  const state = page();
+  state.scroll.height = 1200;
+  state.actions = [
+    { id: "scroll_down", kind: "scroll", label: "Scroll down", delta: 600 },
+  ];
+  const agent = new Agent(
+    {
+      fresh: async () => true,
+      observe: async () => structuredClone(state),
+      close: async () => {},
+      act: async () => {
+        state.scroll.y = state.scroll.height - state.h;
+        state.read_text = "Observed book";
+        state.text = "Product information";
+      },
+    },
+    structuredClone(state),
+    "Read the Full Title",
+    { settings: async () => transport.settings },
+  );
+  await agent.command("tick");
+  await agent.command("predict");
+  expect(planning).toBe(2);
+  expect(agent.state.status).toBe("done");
+  expect(agent.state.history).toHaveLength(1);
+});
+
+test.each([false, true])(
+  "outcome repair retains an executed click only for unchanged inputs: changed=%s",
+  async (changed) => {
+    let planning = 0,
+      clicks = 0;
+    const state = page();
+    Object.assign(state.actions[0]!, { value: "Porto" });
+    const transport = provider(async (request) => {
+      const body = await request.json();
+      if (new URL(request.url).pathname.endsWith("chat/completions")) {
+        if (body.response_format?.json_schema?.name === "completion_review")
+          return completionResponse(body);
+        planning++;
+        return chatResponse({
+          steps: [
+            {
+              instruction: "Open results",
+              checks: [
+                { kind: "action", label: "Go", action: "click" },
+                {
+                  kind: "url",
+                  includes: planning === 1 ? "/incorrect" : "/results",
+                },
+                ...(changed
+                  ? [
+                      {
+                        kind: "value",
+                        label: "Search",
+                        equals: planning === 1 ? "Porto" : "Lisbon",
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ],
+        });
+      }
+      return Response.json(
+        decisionResponse(
+          body,
+          changed && state.url.endsWith("/results") && planning === 1
+            ? "WAIT"
+            : body.questions.click_target
+              ? "CLICK"
+              : "WAIT",
+          "2",
+        ),
+      );
+    });
+    servers.push(transport.server);
+    const agent = new Agent(
+      {
+        fresh: async () => true,
+        observe: async () => structuredClone(state),
+        close: async () => {},
+        act: async (action) => {
+          if (action.kind === "click") {
+            clicks++;
+            state.url = "https://example.test/results";
+            state.fingerprint = "results";
+            if (changed) Object.assign(state.actions[0]!, { value: "Lisbon" });
+            else state.actions = [{ id: "wait", kind: "wait", label: "Wait" }];
+          }
+        },
+      },
+      structuredClone(state),
+      "Open the results",
+      { settings: async () => transport.settings, maxSteps: 8 },
+    );
+    for (let i = 0; i < 4; i++) await agent.command("tick");
+    await agent.command("predict");
+    expect(agent.state.status).toBe(changed ? "predicted" : "done");
+    expect(clicks).toBe(1);
+    expect(planning).toBe(2);
+    expect(
+      agent.state.history.filter((entry) => entry.kind === "click"),
+    ).toHaveLength(1);
+  },
+);
 
 test.each(["explicit", "substring", "unbound", "password", "ambiguous"])(
   "reuse field text only for a uniquely bound explicit value: %s",
@@ -110,6 +469,23 @@ test.each(["explicit", "substring", "unbound", "password", "ambiguous"])(
     }
   },
 );
+
+test("direct field reuse searches a combobox by the user-provided identifier", async () => {
+  const { agent, textCalls } = runner("TYPE_TEXT", "1", 60, [
+    {
+      instruction: "Select Lisbon (LIS)",
+      checks: [{ kind: "value", label: "Search", equals: "Lisbon (LIS)" }],
+    },
+  ]);
+  agent.state.goal = "Choose Lisbon (LIS)";
+  Object.assign(agent.state.page.actions[0]!, {
+    ref: "fixture-document:10",
+    role: "combobox",
+  });
+  await agent.command("tick");
+  expect(agent.state.history[0]!.text).toBe("LIS");
+  expect(textCalls()).toBe(0);
+});
 
 test("only the active step binds a control identity from the current document", async () => {
   const steps: TaskStep[] = ["Lisbon", "Porto"].map((value) => ({
@@ -177,17 +553,46 @@ test.each(["identical", "page", "provider", "node", "document", "url"])(
   },
 );
 
-test("post-action stale observation keeps history and never replays the consumed click", async () => {
-  const { agent, driver } = runner("CLICK", "2");
-  driver.observe.mockImplementationOnce(async () => {
-    expect(agent.state.history).toHaveLength(1);
-    throw new StalePage("Document changed after click");
+test.each(["act", "tick"] as const)(
+  "%s recovers post-action observation without replaying the click",
+  async (command) => {
+    const { agent, driver } = runner("CLICK", "2");
+    if (command === "act") await agent.command("predict");
+    driver.observe.mockImplementationOnce(async () => {
+      expect(agent.state.history).toHaveLength(1);
+      throw new StalePage("Document changed after click");
+    });
+    await agent.command(command, { fingerprint: agent.state.page.fingerprint });
+    expect(driver.act).toHaveBeenCalledTimes(1);
+    expect(agent.state.history[0]!.action).toBe("Go");
+    expect(agent.state.history[0]!.page_changed).toBe(false);
+    expect(agent.state.decision).toBeNull();
+  },
+);
+
+test("act refreshes through late hydration before verifying the executed click", async () => {
+  const { agent, driver } = runner("CLICK", "2", 60, [
+    {
+      instruction: "Open the completed page",
+      checks: [
+        { kind: "action", label: "Go", action: "click" },
+        { kind: "title", includes: "Completed" },
+      ],
+    },
+  ]);
+  await agent.command("predict");
+  driver.observe.mockResolvedValue({
+    ...page(),
+    title: "Completed",
+    fingerprint: "destination",
   });
-  await agent.command("tick");
+  driver.fresh.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+  await agent.command("act", { fingerprint: agent.state.page.fingerprint });
+  expect(agent.state.status).toBe("done");
+  expect(agent.state.checkpoints[0]!.verified?.fingerprint).toBe("destination");
+  expect(driver.observe).toHaveBeenCalledTimes(3);
   expect(driver.act).toHaveBeenCalledTimes(1);
-  expect(agent.state.history[0]!.action).toBe("Go");
-  expect(agent.state.history[0]!.page_changed).toBe(false);
-  expect(agent.state.decision).toBeNull();
+  expect(agent.state.history).toHaveLength(1);
 });
 
 test("an uncertain browser mutation fails closed without automatic retry", async () => {
@@ -201,14 +606,17 @@ test("an uncertain browser mutation fails closed without automatic retry", async
   expect(driver.act).toHaveBeenCalledTimes(1);
 });
 
-test("a document navigation during prediction only reobserves", async () => {
-  const { agent, driver } = runner();
-  driver.fresh.mockRejectedValueOnce(new StalePage("Navigating"));
-  await agent.command("tick");
-  expect(driver.act).not.toHaveBeenCalled();
-  expect(agent.state.decisions).toHaveLength(0);
-  expect(agent.state.status).toBe("ready");
-});
+test.each(["predict", "tick"] as const)(
+  "%s only reobserves a navigation during prediction",
+  async (command) => {
+    const { agent, driver } = runner();
+    driver.fresh.mockRejectedValueOnce(new StalePage("Navigating"));
+    await agent.command(command);
+    expect(driver.act).not.toHaveBeenCalled();
+    expect(agent.state.decisions).toHaveLength(0);
+    expect(agent.state.status).toBe("ready");
+  },
+);
 
 test("a permanently loading page stops after three unchanged waits, not sixty", async () => {
   const { agent, driver } = runner("WAIT");
@@ -437,10 +845,17 @@ test("completion requires a fresh observation, not just matching stale checkpoin
     },
   ]);
   driver.fresh.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-  await expect(agent.command("predict")).rejects.toBeInstanceOf(StalePage);
+  driver.observe.mockResolvedValueOnce({
+    ...page(),
+    title: "Loading",
+    fingerprint: "new-page",
+  });
+  await agent.command("predict");
   expect(agent.state.status).toBe("ready");
+  expect(agent.state.page.title).toBe("Loading");
   expect(agent.state.checkpoints[0]!.verified).toBeNull();
   expect(driver.act).not.toHaveBeenCalled();
+  driver.fresh.mockResolvedValueOnce(false);
   await agent.command("tick");
   expect(agent.state.status).toBe("done");
   expect(agent.state.decisions).toHaveLength(0);
@@ -455,16 +870,19 @@ test("a page change during final review never publishes a completed answer", asy
     },
   ]);
   driver.fresh
+    .mockResolvedValue(false)
     .mockResolvedValueOnce(true)
-    .mockResolvedValueOnce(true)
-    .mockResolvedValueOnce(false);
+    .mockResolvedValueOnce(true);
   await expect(agent.command("predict")).rejects.toBeInstanceOf(StalePage);
   expect(agent.state.answer).toBeNull();
-  expect(agent.state.status).toBe("ready");
+  expect(agent.state.status).toBe("error");
+  expect(agent.state.stop_reason?.code).toBe("observation_failed");
+  expect(driver.observe).toHaveBeenCalledTimes(3);
+  expect(agent.state.completion_reviews).toHaveLength(1);
   expect(driver.act).not.toHaveBeenCalled();
 });
 
-test("repeated missing requirements stop within the review and revision budgets", async () => {
+test("a review repeating only verified requirements stops without a revision loop", async () => {
   const steps = [
     {
       instruction: "Read Search",
@@ -486,8 +904,8 @@ test("repeated missing requirements stop within the review and revision budgets"
   });
   await agent.command("tick");
   expect(agent.state.status).toBe("blocked");
-  expect(agent.state.completion_reviews).toHaveLength(3);
-  expect(agent.state.plan_revisions).toHaveLength(2);
+  expect(agent.state.completion_reviews).toHaveLength(1);
+  expect(agent.state.plan_revisions).toHaveLength(0);
   expect(agent.state.answer).toBeNull();
   expect(driver.act).not.toHaveBeenCalled();
 });
@@ -621,6 +1039,7 @@ test("a failed recovery stops without replaying an already consumed mutation", a
   expect(agent.state.stop_reason?.code).toBe("observation_failed");
   expect(agent.state.history[0]!.page_changed).toBeNull();
   expect(driver.act).toHaveBeenCalledTimes(1);
+  expect(driver.observe).toHaveBeenCalledTimes(4);
 });
 
 test("BLOCKED reobserves before stopping and reports incomplete coverage", async () => {
@@ -639,4 +1058,83 @@ test("BLOCKED reobserves before stopping and reports incomplete coverage", async
   expect(agent.state.status).toBe("blocked");
   expect(agent.state.stop_reason?.code).toBe("incomplete_observation");
   expect(driver.act).not.toHaveBeenCalled();
+});
+
+test("a same-label popup input keeps the original checkpoint binding", async () => {
+  const current = page();
+  const original: Action = {
+    id: "origin",
+    node: 10,
+    ref: "fixture-document:10",
+    kind: "click",
+    role: "combobox",
+    label: "Origin",
+    value: "",
+    has_popup: true,
+    expanded: "false",
+  };
+  current.actions = [original];
+  let plans = 0;
+  const p = provider(async (request) => {
+    const body = await request.json();
+    if (new URL(request.url).pathname.endsWith("systemone"))
+      return Response.json(
+        decisionResponse(
+          body,
+          "CLICK",
+          current.actions.length === 1 ? "1" : "2",
+        ),
+      );
+    if (body.response_format.json_schema.name === "completion_review")
+      return completionResponse(body);
+    plans++;
+    return chatResponse({
+      steps: [
+        {
+          instruction: "Choose Berlin",
+          checks: [{ kind: "value", label: "Origin", equals: "Berlin" }],
+        },
+      ],
+    });
+  });
+  servers.push(p.server);
+  const { driver } = runner();
+  driver.observe.mockImplementation(async () => structuredClone(current));
+  driver.act.mockImplementation(async (action) => {
+    current.actions =
+      action.id === "origin"
+        ? [
+            {
+              ...original,
+              id: "input",
+              node: 20,
+              ref: "fixture-document:20",
+              popup_owner: original.ref,
+              kind: "fill",
+              expanded: "true",
+            },
+            {
+              id: "option",
+              node: 21,
+              ref: "fixture-document:21",
+              popup_owner: original.ref,
+              kind: "click",
+              role: "option",
+              label: "Berlin",
+            },
+          ]
+        : [{ ...original, value: "Berlin" }];
+    current.fingerprint = fingerprint(current);
+  });
+  const agent = new Agent(driver, structuredClone(current), "Choose Berlin", {
+    settings: async () => p.settings,
+  });
+  await agent.command("tick");
+  await agent.command("tick");
+  expect(agent.state.status).toBe("done");
+  expect(plans).toBe(1);
+  expect(agent.state.plan_revisions).toHaveLength(0);
+  expect(agent.state.checkpoints[0]!.checks[0]).toMatchObject({
+    ref: "fixture-document:10",
+  });
 });
