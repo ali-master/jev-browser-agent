@@ -71,6 +71,7 @@ function target(action: Action) {
           checked: action.checked,
           selected: action.selected,
           expanded: action.expanded,
+          scroll_delta: action.scroll_delta,
           option_index:
             action.kind === "select" ? action.option_index : undefined,
         }

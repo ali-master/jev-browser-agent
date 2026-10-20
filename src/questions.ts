@@ -18,6 +18,7 @@ a target for that operation; another question decides which operation to execute
 a field that already contains the requested value. Choose only an offered element index.`;
 
 export const CURRENT_STEP = `Choose one browser operation for the CURRENT unfinished checklist step.
+Enter frame / Switch tab / Return to parent frame controls change the observed browser context. Use CLICK to inspect them when required controls are elsewhere. Scrollbar controls scroll their named panel using CLICK.
 For changing a checkbox, radio or switch, CLICK its control. For a native dropdown, SELECT its option.
 For entering a field value, TYPE_TEXT. Use the observed current values and action history.
 For a collapsed custom dropdown or autocomplete, CLICK to open it, TYPE_TEXT in its popup input if needed,

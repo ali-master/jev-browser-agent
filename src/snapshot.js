@@ -1,7 +1,26 @@
 (() => {
   if (!document.body) return null;
+  const roots = [document];
+  // Open roots only; closed roots retain the browser's encapsulation boundary.
+  for (let i = 0; i < roots.length && i < 100; i++)
+    for (const e of roots[i].querySelectorAll("*"))
+      if (e.shadowRoot && roots.length < 100) roots.push(e.shadowRoot);
+  const query = (selector) =>
+    roots.flatMap((root) => [...root.querySelectorAll(selector)]);
+  const hit = (x, y) => {
+    let e = document.elementFromPoint(x, y),
+      next;
+    while ((next = e?.shadowRoot?.elementFromPoint(x, y)) && next !== e)
+      e = next;
+    return e;
+  };
+  const active = () => {
+    let e = document.activeElement;
+    while (e?.shadowRoot?.activeElement) e = e.shadowRoot.activeElement;
+    return e;
+  };
   for (const selector of window.__jevRemoveSelectors ?? []) {
-    for (const element of document.querySelectorAll(selector)) {
+    for (const element of query(selector)) {
       if (["HTML", "HEAD", "BODY"].includes(element.tagName)) continue;
       element.remove();
     }
@@ -11,6 +30,8 @@
     nodes: new Map(),
     next: 1,
   });
+  cache.hit = hit;
+  cache.active = active;
   const identity = (e) => {
     if (!cache.ids.has(e)) cache.ids.set(e, cache.next++);
     const id = cache.ids.get(e);
@@ -19,15 +40,17 @@
   };
   for (const [id, e] of cache.nodes) if (!e.isConnected) cache.nodes.delete(id);
   const safe = (e) => !["password", "file", "hidden"].includes(e.type);
-  const visible = (e) =>
-    !e.closest('[aria-hidden="true"],[inert]') &&
-    e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+  const visible = (e) => {
+    for (let current = e; current; current = current.getRootNode().host)
+      if (current.closest('[aria-hidden="true"],[inert]')) return false;
+    return e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+  };
   const name = (e, seen = new Set()) => {
     if (!e || seen.has(e)) return "";
     seen.add(e);
     const referenced = (e.getAttribute("aria-labelledby") || "")
       .split(/\s+/)
-      .map((id) => name(document.getElementById(id), seen))
+      .map((id) => name(e.getRootNode().getElementById?.(id), seen))
       .filter(Boolean)
       .join(" ");
     return (
@@ -76,9 +99,11 @@
   const selector =
     "a[href],button,input,textarea,select,summary,label,[contenteditable],[onclick]," +
     roles.map((role) => '[role="' + role + '"]').join(",");
-  const document_id = String(performance.timeOrigin);
+  const document_id = (cache.documentId ||= [
+    ...crypto.getRandomValues(new Uint32Array(4)),
+  ].join("-"));
   const popupSelector = 'dialog,[role="dialog"],[role="listbox"],[role="menu"]';
-  const popups = [...document.querySelectorAll(popupSelector)].filter(visible);
+  const popups = query(popupSelector).filter(visible);
   cache.popupOwners ||= new Map();
   cache.popupDates ||= new Map();
   cache.committedDates ||= new WeakMap();
@@ -220,7 +245,7 @@
     scrollY,
     innerWidth,
     innerHeight,
-    [...document.querySelectorAll("input,textarea,select")]
+    query("input,textarea,select")
       .filter(safe)
       .map((e) => [
         identity(e),
@@ -259,6 +284,8 @@
       e.getAttribute("aria-selected"),
       e.closest('[role="gridcell"]')?.getAttribute("aria-selected") ?? null,
       e.getAttribute("href"),
+      e.scrollTop,
+      e.scrollHeight,
       c.form ? identity(c.form) : null,
       scope?.innerText?.slice(0, 6000) || "",
       fieldScope(e),
@@ -274,14 +301,13 @@
     ];
   };
   const actions = [];
-  const candidates = new Set(document.querySelectorAll(selector));
-  const candidatesWalker = document.createTreeWalker(
-    document.body,
-    NodeFilter.SHOW_ELEMENT,
-  );
+  const candidates = new Set(query(selector));
+  const extra = roots
+    .flatMap((root) => [...root.querySelectorAll("*")])
+    .slice(0, 5001);
   let candidate,
     inspected = 0;
-  while (inspected < 5000 && (candidate = candidatesWalker.nextNode())) {
+  while (inspected < 5000 && (candidate = extra[inspected])) {
     inspected++;
     if (
       !candidates.has(candidate) &&
@@ -291,8 +317,7 @@
     )
       candidates.add(candidate);
   }
-  const discovery_limited =
-    inspected === 5000 && candidatesWalker.nextNode() !== null;
+  const discovery_limited = extra.length > 5000;
   for (const e of candidates) {
     const c = control(e);
     if (
@@ -322,7 +347,7 @@
       y >= innerHeight
     )
       continue;
-    if (!e.contains(document.elementFromPoint(x, y))) continue;
+    if (!e.contains(hit(x, y))) continue;
     if (rname === "gridcell" && e.querySelector('button,[role="button"]'))
       continue;
     const base = {
@@ -411,6 +436,45 @@
         });
     }
   }
+  for (const e of extra.slice(0, 5000)) {
+    if (
+      !visible(e) ||
+      !/(auto|scroll)/.test(getComputedStyle(e).overflowY) ||
+      e.scrollHeight <= e.clientHeight + 2 ||
+      ["HTML", "BODY", "TEXTAREA", "SELECT"].includes(e.tagName)
+    )
+      continue;
+    const r = e.getBoundingClientRect(),
+      x = r.x + r.width / 2,
+      y = r.y + r.height / 2;
+    if (
+      x < 0 ||
+      y < 0 ||
+      x >= innerWidth ||
+      y >= innerHeight ||
+      !e.contains(hit(x, y))
+    )
+      continue;
+    for (const delta of [-560, 560]) {
+      if (
+        delta < 0
+          ? e.scrollTop <= 0
+          : e.scrollTop + e.clientHeight >= e.scrollHeight - 2
+      )
+        continue;
+      actions.push({
+        kind: "click",
+        node: identity(e),
+        ref: `${document_id}:${identity(e)}`,
+        role: "scrollbar",
+        label: `Scroll ${delta > 0 ? "down" : "up"} in ${name(e).slice(0, 80) || "panel"}`,
+        scroll_delta: delta,
+        value: String(e.scrollTop),
+        scope: fieldScope(e).scope,
+        rect: { x: r.x, y: r.y, w: r.width, h: r.height },
+      });
+    }
+  }
   const editableForms = new Set(
     actions
       .filter((action) => action.kind === "fill" || action.kind === "select")
@@ -440,42 +504,55 @@
     )
       cache.readText.delete(node);
   }
-  const words = [],
-    walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const words = [];
+  const walkers = roots.map((root) =>
+    document.createTreeWalker(
+      root === document ? document.body : root,
+      NodeFilter.SHOW_TEXT,
+    ),
+  );
   const range = document.createRange();
   let node,
     length = 0;
-  while ((node = walker.nextNode()) && length < 6000) {
-    const value = node.textContent.trim(),
-      parent = node.parentElement;
-    if (
-      !value ||
-      !parent ||
-      parent.closest("script,style,noscript,template") ||
-      !visible(parent)
-    )
-      continue;
-    range.selectNodeContents(node);
-    const r = range.getBoundingClientRect();
-    if (
-      r.width > 0 &&
-      r.height > 0 &&
-      r.bottom > 0 &&
-      r.top < innerHeight &&
-      r.right > 0 &&
-      r.left < innerWidth
-    ) {
-      words.push(value);
-      const link = parent.closest("a[href]"),
-        sectionLink =
-          link?.hash &&
-          link.href.split("#")[0] === location.href.split("#")[0] &&
-          !parent.closest("h1,h2,h3,h4,h5,h6,[role=heading]");
-      // A table-of-contents label is navigation, not evidence of reading its section.
-      if (!sectionLink) cache.readText.set(node, value);
-      length += value.length;
+  for (const walker of walkers)
+    while ((node = walker.nextNode()) && length < 6000) {
+      const value = node.textContent.trim(),
+        parent = node.parentElement;
+      if (
+        !value ||
+        !parent ||
+        parent.closest("script,style,noscript,template") ||
+        !visible(parent)
+      )
+        continue;
+      range.selectNodeContents(node);
+      const r = range.getBoundingClientRect();
+      if (
+        r.width > 0 &&
+        r.height > 0 &&
+        r.bottom > 0 &&
+        r.top < innerHeight &&
+        r.right > 0 &&
+        r.left < innerWidth &&
+        (() => {
+          const e = hit(
+            Math.max(0, Math.min(innerWidth - 1, (r.left + r.right) / 2)),
+            Math.max(0, Math.min(innerHeight - 1, (r.top + r.bottom) / 2)),
+          );
+          return e && (parent.contains(e) || e.contains(parent));
+        })()
+      ) {
+        words.push(value);
+        const link = parent.closest("a[href]"),
+          sectionLink =
+            link?.hash &&
+            link.href.split("#")[0] === location.href.split("#")[0] &&
+            !parent.closest("h1,h2,h3,h4,h5,h6,[role=heading]");
+        // A table-of-contents label is navigation, not evidence of reading its section.
+        if (!sectionLink) cache.readText.set(node, value);
+        length += value.length;
+      }
     }
-  }
   // Accessible labels carry visible control meaning that may not be in text nodes.
   for (const label of new Set(
     actions.map((action) => name(cache.nodes.get(action.node))),

@@ -284,7 +284,7 @@ export async function checkModels(readSettings: SettingsReader) {
 
 export function actionSpace(actions: Action[]) {
   const elements: ElementView[] = [];
-  const indices = new Map<number, ElementView>();
+  const indices = new Map<string, ElementView>();
   const targets: Partial<Record<TargetOperation, Record<string, Action>>> = {};
   const controls: Partial<Record<Operation, Action>> = {};
   const operations = {
@@ -303,7 +303,8 @@ export function actionSpace(actions: Action[]) {
       ] = action;
       continue;
     }
-    let element = indices.get(action.node);
+    const identity = `${action.node}:${action.scroll_delta ?? ""}`;
+    let element = indices.get(identity);
     if (!element) {
       element = {
         index: String(elements.length + 1),
@@ -328,7 +329,7 @@ export function actionSpace(actions: Action[]) {
       };
       if (action.kind === "select") element.options = [];
       elements.push(element);
-      indices.set(action.node, element);
+      indices.set(identity, element);
     }
     const operation = operations[action.kind];
     const group = (targets[operation] ??= {});
@@ -590,8 +591,12 @@ export async function choose(
     }
     for (const operation of Object.keys(targets) as TargetOperation[]) {
       const candidates = Object.fromEntries(
-        Object.entries(targets[operation]!).filter(([, action]) =>
-          allowed.has(action.id),
+        Object.entries(targets[operation]!).filter(
+          ([, action]) =>
+            allowed.has(action.id) ||
+            ((!controlChecks.length || missingControls.length > 0) &&
+              "node" in action &&
+              Boolean(action.context_id || action.scroll_delta)),
         ),
       );
       if (Object.keys(candidates).length) targets[operation] = candidates;

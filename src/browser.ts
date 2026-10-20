@@ -4,6 +4,8 @@ import type {
   Browser as PlaywrightBrowser,
   BrowserContext,
   CDPSession,
+  Frame,
+  Page,
 } from "playwright";
 import { httpUrl } from "./config";
 import {
@@ -78,13 +80,21 @@ export class Browser implements BrowserDriver {
   private screenshotRequest: Promise<string> | null = null;
   private stopWatching: (() => Promise<void>) | null = null;
   private pointer = { x: 24, y: 24 };
+  private frame: Frame;
+  private contexts = new Map<string, Frame>();
+  private frameIds = new WeakMap<Frame, string>();
+  private frameViewer?: (frame: { image: string; url: string }) => void;
   private constructor(
     private browser: PlaywrightBrowser,
     private context: BrowserContext,
     private session: CDPSession,
+    private tab: Page,
+    private sessions: Map<Page, Promise<CDPSession>>,
     private onPointer?: BrowserOptions["onPointer"],
     private blockedUrl: (url: string) => boolean = () => false,
-  ) {}
+  ) {
+    this.frame = tab.mainFrame();
+  }
 
   static async create(
     url: string,
@@ -121,6 +131,37 @@ export class Browser implements BrowserDriver {
         serviceWorkers:
           filters.blockAds || filters.blockedUrls.length ? "block" : "allow",
       });
+      const sessions = new Map<Page, Promise<CDPSession>>();
+      const prepare = (page: Page) => {
+        let ready = sessions.get(page);
+        if (!ready) {
+          ready = (async () => {
+            const session = await context!.newCDPSession(page);
+            await installNetworkFilters(page, session, filters, blockedUrl);
+            await session.send("Emulation.setFocusEmulationEnabled", {
+              enabled: true,
+            });
+            return session;
+          })();
+          sessions.set(page, ready);
+        }
+        return ready;
+      };
+      // A popup's first request precedes its page event; pause it until filters are installed.
+      if (filters.blockAds || filters.blockedUrls.length)
+        await context.route("**/*", async (route) => {
+          try {
+            if (blockedUrl(route.request().url()))
+              return await route.abort("blockedbyclient");
+            await prepare(route.request().frame().page());
+            await route.continue();
+          } catch {
+            await route.abort().catch(() => {});
+          }
+        });
+      context.on("page", (page) => {
+        void prepare(page).catch(() => {});
+      });
       if (filters.removeSelectors.length)
         await context.addInitScript(
           `Object.defineProperty(window,"__jevRemoveSelectors",{value:Object.freeze(${JSON.stringify(filters.removeSelectors)})});`,
@@ -145,11 +186,7 @@ export class Browser implements BrowserDriver {
           );
       }
       if (options.headless === false) await page.bringToFront();
-      const session = await context.newCDPSession(page);
-      await installNetworkFilters(page, session, filters, blockedUrl);
-      await session.send("Emulation.setFocusEmulationEnabled", {
-        enabled: true,
-      });
+      const session = await prepare(page);
       await page.goto(targetUrl, {
         waitUntil: "commit",
         timeout: 30_000,
@@ -164,6 +201,8 @@ export class Browser implements BrowserDriver {
         browser,
         context,
         session,
+        page,
+        sessions,
         options.showPointer ? options.onPointer : undefined,
         blockedUrl,
       );
@@ -191,6 +230,8 @@ export class Browser implements BrowserDriver {
     mutating = false,
   ): Promise<T> {
     try {
+      if (this.frame !== this.tab.mainFrame())
+        return (await this.frame.evaluate(expression)) as T;
       const result = await this.session.send("Runtime.evaluate", {
         expression,
         returnByValue: true,
@@ -219,7 +260,169 @@ export class Browser implements BrowserDriver {
     }
   }
 
+  /** Keep frame/tab identities private and stable for the lifetime of the owned context. */
+  private contextId(frame: Frame) {
+    let id = this.frameIds.get(frame);
+    if (!id) {
+      id = crypto.randomUUID();
+      this.frameIds.set(frame, id);
+    }
+    return id;
+  }
+
+  /** Map local frame input to the tab viewport, rejecting hidden or transformed ancestors. */
+  private async frameOffset(
+    frame = this.frame,
+  ): Promise<{ x: number; y: number }> {
+    if (!frame.parentFrame()) return { x: 0, y: 0 };
+    const element = await frame.frameElement();
+    try {
+      const local = await element.evaluate((node) => {
+        const e = node as HTMLElement;
+        const r = e.getBoundingClientRect(),
+          x = r.x + r.width / 2,
+          y = r.y + r.height / 2;
+        for (let p: Element | null = e; p; p = p.parentElement)
+          if (getComputedStyle(p).transform !== "none") return null;
+        const root = e.getRootNode() as Document | ShadowRoot;
+        if (
+          !e.checkVisibility({
+            checkOpacity: true,
+            checkVisibilityCSS: true,
+          }) ||
+          x < 0 ||
+          y < 0 ||
+          x >= innerWidth ||
+          y >= innerHeight ||
+          root.elementFromPoint(x, y) !== e
+        )
+          return null;
+        return {
+          x: r.x + (e as HTMLElement).clientLeft,
+          y: r.y + (e as HTMLElement).clientTop,
+        };
+      });
+      if (!local)
+        throw new StalePage("Frame is hidden, covered or transformed.");
+      const parent = await this.frameOffset(frame.parentFrame()!);
+      return { x: parent.x + local.x, y: parent.y + local.y };
+    } finally {
+      await element.dispose();
+    }
+  }
+
+  /** Hit-test the exact input point through every ancestor frame, not just its center. */
+  private async framePoint(
+    point: { x: number; y: number },
+    frame = this.frame,
+  ): Promise<{ x: number; y: number }> {
+    if (!frame.parentFrame()) return point;
+    const element = await frame.frameElement();
+    try {
+      const next = await element.evaluate((node, p) => {
+        const e = node as HTMLElement;
+        const r = e.getBoundingClientRect(),
+          x = r.x + (e as HTMLElement).clientLeft + p.x,
+          y = r.y + (e as HTMLElement).clientTop + p.y;
+        const root = e.getRootNode() as Document | ShadowRoot;
+        return x >= 0 &&
+          y >= 0 &&
+          x < innerWidth &&
+          y < innerHeight &&
+          root.elementFromPoint(x, y) === e
+          ? { x, y }
+          : null;
+      }, point);
+      if (!next) throw new StalePage("Frame target is covered or clipped.");
+      return await this.framePoint(next, frame.parentFrame()!);
+    } finally {
+      await element.dispose();
+    }
+  }
+
+  /** Switch only to an owned, previously observed context and restart its live viewer. */
+  private async switchContext(frame: Frame) {
+    if (frame.isDetached() || frame.page().isClosed())
+      throw new StalePage("Browser context disappeared.");
+    if (frame.page() !== this.tab) {
+      await this.stopWatching?.();
+      this.tab = frame.page();
+      this.session = await this.sessions.get(this.tab)!;
+      this.screenshotRequest = null;
+      if (this.frameViewer) await this.watchFrames(this.frameViewer);
+    }
+    this.frame = frame;
+    this.afterInput = null;
+    this.observed = false;
+  }
+
+  /** Expose context navigation as runtime-owned controls; never accept model-supplied URLs. */
+  private async readState(): Promise<PageState | null> {
+    const state = await this.evaluate<PageState | null>(READ_STATE);
+    if (!state) return null;
+    const offset = await this.frameOffset();
+    state.context_id = this.contextId(this.frame);
+    state.frame_offset = offset;
+    this.contexts.clear();
+    const add = (frame: Frame, label: string) => {
+      const id = this.contextId(frame);
+      this.contexts.set(id, frame);
+      state.actions.push({
+        id: `context_${id}`,
+        node: -this.contexts.size,
+        kind: "click",
+        role: "button",
+        label,
+        context_id: id,
+        ref: `context:${id}`,
+        context: frame.url(),
+        ...(/^https?:/.test(frame.url()) ? { href: frame.url() } : {}),
+        native_navigation: true,
+      });
+    };
+    for (const frame of this.frame.childFrames()) {
+      if (this.blockedUrl(frame.url())) continue;
+      try {
+        await this.frameOffset(frame);
+        add(frame, `Enter frame: ${frame.name() || frame.url()}`);
+      } catch {
+        /* Offscreen/covered frames are revealed by ordinary scrolling first. */
+      }
+    }
+    if (this.frame.parentFrame())
+      add(this.frame.parentFrame()!, "Return to parent frame");
+    for (const tab of this.context.pages())
+      if (tab !== this.tab && !tab.isClosed() && !this.blockedUrl(tab.url()))
+        add(
+          tab.mainFrame(),
+          `Switch tab: ${(await tab.title().catch(() => "")) || tab.url()}`,
+        );
+    for (const action of state.actions)
+      if ("rect" in action && action.rect) {
+        action.rect.x += offset.x;
+        action.rect.y += offset.y;
+      }
+    const viewport = this.tab.viewportSize();
+    if (viewport) {
+      state.w = viewport.width;
+      state.h = viewport.height;
+    }
+    state.marker.push(
+      state.context_id,
+      offset,
+      state.actions.filter((a) => "context_id" in a),
+    );
+    if (state.readiness === "empty" && this.contexts.size)
+      state.readiness = "ready";
+    return state;
+  }
+
   async observe(screenshot = false): Promise<PageState> {
+    if (this.tab.isClosed() || this.frame.isDetached()) {
+      const tab = this.context.pages().find((page) => !page.isClosed());
+      if (!tab) throw new Error("All owned tabs were closed.");
+      await this.switchContext(tab.mainFrame());
+    }
     const action = this.afterInput;
     const waitForControls = !this.observed || Boolean(action);
     this.afterInput = null;
@@ -254,7 +457,7 @@ export class Browser implements BrowserDriver {
     }
     for (let attempt = 0; attempt < 30; attempt++) {
       try {
-        const state = await this.evaluate<PageState | null>(READ_STATE);
+        const state = await this.readState();
         if (!state) throw new StalePage("Document is navigating.");
         if (
           attempt < 9 &&
@@ -330,7 +533,14 @@ export class Browser implements BrowserDriver {
   }
 
   async fresh(page: PageState, action?: Action): Promise<boolean> {
-    if (action && (action.kind === "click" || action.kind === "select")) {
+    if (page.context_id !== this.contextId(this.frame)) return false;
+    if (!Bun.deepEquals(page.frame_offset, await this.frameOffset(), true))
+      return false;
+    if (
+      action &&
+      (action.kind === "click" || action.kind === "select") &&
+      !action.context_id
+    ) {
       if (!Number.isSafeInteger(action.node)) return false;
       const current = await this.evaluate(`(() => { const c=window.__jevFast;
         return c ? [c.pageKey(),c.guard(c.nodes.get(${action.node}))] : null; })()`);
@@ -341,9 +551,7 @@ export class Browser implements BrowserDriver {
       );
     }
     return Bun.deepEquals(
-      await this.evaluate(
-        `(() => { const state=${READ_STATE}; return state?.marker ?? null; })()`,
-      ),
+      (await this.readState())?.marker ?? null,
       page.marker,
       true,
     );
@@ -368,6 +576,14 @@ export class Browser implements BrowserDriver {
       throw new Error("Invalid field text; nothing typed.");
     if (!(await this.fresh(page, action)))
       throw new StalePage("Page changed since this decision. Observe again.");
+    if ("context_id" in action && action.context_id) {
+      const frame = this.contexts.get(action.context_id);
+      if (!frame) throw new StalePage("Context is no longer offered.");
+      if (this.blockedUrl(frame.url()))
+        throw new PageFilterError("Context URL is blocked.");
+      await this.switchContext(frame);
+      return;
+    }
     if (action.kind === "wait") {
       await Bun.sleep(300);
       return;
@@ -387,6 +603,9 @@ export class Browser implements BrowserDriver {
         }
         return null;
       })()`);
+      if (origin) Object.assign(origin, await this.framePoint(origin));
+      else if (this.frame.parentFrame())
+        throw new StalePage("No unobstructed frame scroll point.");
       await this.movePointer(
         origin ?? { x: page.w / 2, y: page.h * 0.8 },
         page,
@@ -441,7 +660,7 @@ export class Browser implements BrowserDriver {
         if (e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') || !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
         if (action.kind==='fill' && (e.readOnly || e.getAttribute('aria-readonly')==='true')) return null;
         const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
-        if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight || !e.contains(document.elementFromPoint(x,y))) return null;
+        if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight || !e.contains(c.hit(x,y))) return null;
         const point=${JSON.stringify(point ?? null)};
         if (point && (Math.abs(x-point.x)>1 || Math.abs(y-point.y)>1)) return null;
         if (${nativeFill}) {
@@ -482,7 +701,8 @@ export class Browser implements BrowserDriver {
         throw new Error(
           "Invalid native input value or constraint; nothing entered.",
         );
-      await this.movePointer(target, page, action);
+      const offset = await this.frameOffset();
+      await this.movePointer(await this.framePoint(target), page, action);
       // Hover can move, cover or replace the target; never click the old position.
       const current = await resolveTarget(true, target);
       if (!current)
@@ -491,6 +711,21 @@ export class Browser implements BrowserDriver {
         );
       if (current.invalid)
         throw new Error("Native input constraints changed; nothing entered.");
+      if (!Bun.deepEquals(offset, await this.frameOffset(), true))
+        throw new StalePage("Frame moved before input.");
+      Object.assign(current, await this.framePoint(current));
+      if (action.scroll_delta) {
+        this.showPointer(page, action, "scroll");
+        await this.session.send("Input.dispatchMouseEvent", {
+          type: "mouseWheel",
+          x: current.x,
+          y: current.y,
+          deltaX: 0,
+          deltaY: action.scroll_delta,
+        });
+        this.afterInput = action;
+        return;
+      }
       if (action.kind !== "select" && !nativeFill) {
         // CDP inputs are never retried: a rejected response can follow a successful mutation.
         for (const type of ["mousePressed", "mouseReleased"] as const) {
@@ -510,7 +745,7 @@ export class Browser implements BrowserDriver {
         }
         if (action.kind === "fill") {
           const focused = await this.evaluate<boolean>(
-            `document.activeElement===window.__jevFast?.nodes.get(${action.node})`,
+            `window.__jevFast?.active()===window.__jevFast?.nodes.get(${action.node})`,
             true,
           );
           if (!focused) {
@@ -604,6 +839,7 @@ export class Browser implements BrowserDriver {
   }
 
   async watchFrames(onFrame: (frame: { image: string; url: string }) => void) {
+    this.frameViewer = onFrame;
     await this.stopWatching?.();
     await this.session.send("Page.enable");
     let main = (await this.session.send("Page.getFrameTree")).frameTree.frame;
@@ -632,7 +868,11 @@ export class Browser implements BrowserDriver {
       sessionId: number;
     }) => {
       try {
-        if (active) onFrame({ image: data, url: main.url });
+        if (active)
+          onFrame({
+            image: data,
+            url: this.frame.parentFrame() ? this.frame.url() : main.url,
+          });
       } catch {
         // Viewer failures must not interrupt browser input or frame acknowledgements.
       } finally {

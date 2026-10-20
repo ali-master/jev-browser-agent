@@ -26,6 +26,10 @@ interface Target {
   popup_owner?: string;
   native_navigation?: boolean;
   submits_form?: boolean;
+  /** Runtime-owned navigation between observed frames/tabs; never a model URL. */
+  context_id?: string;
+  /** Scroll a visible, observed overflow container. */
+  scroll_delta?: number;
   rect?: { x: number; y: number; w: number; h: number };
 }
 export type Action =
@@ -41,6 +45,8 @@ export type Action =
 
 export interface PageState {
   document_id: string;
+  context_id?: string;
+  frame_offset?: { x: number; y: number };
   discovery_limited?: boolean;
   readiness?: "ready" | "loading" | "empty";
   url: string;

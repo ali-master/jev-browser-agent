@@ -16,6 +16,7 @@ import type {
 const CHECKLIST_RULES = `Always set ref:null. The runtime binds identities from observed controls; never copy or guess a ref.
 Copy control labels verbatim from elements[].label, never from page text or element context. Visible button captions can differ from their accessible labels.
 Links expose their observed href. Use that destination URL to verify navigation instead of guessing a URL, page title or text outcome.
+Enter frame, Switch tab and Return to parent frame are observed browser controls. Click them and check their observed href to inspect another context before planning its contents.
 Never assume a person's name, a product name, or a section heading is the document title. Prefer the observed link href for a destination.
 For reading a named section or chapter, click its observed table-of-contents link and verify its href/fragment, then read the actual section. A table-of-contents label is not proof of reading that section.
 Use a separate reading step for each requested section. Opening Examples does not also verify Return value.
