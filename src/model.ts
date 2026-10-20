@@ -309,6 +309,7 @@ export function actionSpace(actions: Action[]) {
       element = {
         index: String(elements.length + 1),
         label: action.label.split(" → ")[0]!,
+        secret_key: action.secret_key,
         role: action.role,
         ref: action.ref,
         scope: action.scope || undefined,

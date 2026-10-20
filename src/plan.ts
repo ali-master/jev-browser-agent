@@ -14,6 +14,7 @@ import type {
 } from "./types";
 
 const CHECKLIST_RULES = `Always set ref:null. The runtime binds identities from observed controls; never copy or guess a ref.
+For a field with secret_key, use the exact {{secret:NAME}} placeholder from the user's goal as its expected value; the runtime fills the private value. Never ask for or invent a password.
 Copy control labels verbatim from elements[].label, never from page text or element context. Visible button captions can differ from their accessible labels.
 Links expose their observed href. Use that destination URL to verify navigation instead of guessing a URL, page title or text outcome.
 Enter frame, Switch tab and Return to parent frame are observed browser controls. Click them and check their observed href to inspect another context before planning its contents.

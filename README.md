@@ -274,6 +274,41 @@ Use `jev run ... --schema output.schema.json` to print the structured result as 
 
 Schemas use JSON Schema draft-07, validated with [Ajv](https://ajv.js.org/guide/getting-started.html), without type coercion, remote references or async validators. Schemas are limited to 64 KB and 32 levels. Format annotations are not validated. Extraction uses the current chat helper, sends only retained observations, and reports its own token usage under `extraction`.
 
+## Login profiles and secrets
+
+Create an isolated login profile manually, including any MFA challenge:
+
+```sh
+jev login --url https://example.com --profile research
+# Sign in in the opened Chromium window, then press Enter in the terminal.
+jev run --url https://example.com --profile research --goal 'Read my saved items.'
+```
+
+`profile: { name: "research" }` is also an `AgentOptions` / `BrowserOptions` setting, and the inspector has a **Login profile** field. Cookies, localStorage and IndexedDB are restored into a new owned context and saved on close. They never import your normal Chrome profile. Ctrl+C during manual login cancels saving. SessionStorage is not persisted.
+
+Files under `.jev/profiles/` are AES-GCM encrypted, written atomically with `0600` permissions. The key lives in the OS credential store through [Bun.secrets](https://bun.sh/docs/runtime/secrets). Headless environments may provide `JEV_PROFILE_KEY`, a 32-byte base64 key. Missing/wrong keys fail closed and leave the existing file intact. Keep the same profile path and key when restoring a backup.
+
+Profiles default to the starting origin. For SSO, pass an explicit `profile.origins` array, or repeat `--allow-origin` during login and subsequent runs. Reopening a profile with a different scope is rejected. Unrelated storage is discarded; parent-domain cookies are narrowed to the approved exact host. Cookies follow browser host/scheme rules and cannot isolate ports.
+
+For automated field entry, supply named secrets separately from the goal:
+
+```ts
+const options = {
+  secrets: {
+    password: {
+      value: process.env.SITE_PASSWORD!,
+      origin: "https://example.com",
+      label: "Password",
+    },
+  },
+};
+// Goal: "Enter {{secret:password}} in Password, then sign in."
+```
+
+The CLI accepts `--secrets private-secrets.json`; the inspector accepts the same JSON in its masked **Secrets JSON** input and clears it after starting. Secret values stay out of saved settings. Only the configured exact origin and field label can receive the value, and the goal must explicitly name its placeholder. Password inputs remain excluded unless bound this way.
+
+Prompts, history and traces use placeholders; changed password contents still invalidate an old decision. Screenshots, live images, pointer events and workflow recording/replay are disabled for runs containing secrets. Literal values are redacted from observed text too; arbitrary encodings or transformations performed by a site cannot be recognized as secrets. Give credentials only to sites you trust.
+
 ## Page filters
 
 Expand **Agent settings** in the inspector to enable **Block ad requests**, add **Blocked URLs**, or choose CSS selectors under **Remove elements**. All three are off or empty by default. Saved filters live in `.jev/settings.json` alongside the model connections and are used by the inspector, CLI and library. Changes apply to the **next task**; an active run keeps the filters it started with.

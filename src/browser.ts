@@ -8,6 +8,8 @@ import type {
   Page,
 } from "playwright";
 import { httpUrl } from "./config";
+import { ProfileStore, SecretVault } from "./credentials";
+import type { ProfileOptions, Secrets } from "./credentials";
 import {
   blockedUrlMatcher,
   installNetworkFilters,
@@ -33,6 +35,8 @@ export interface BrowserDriver {
   close(): Promise<void>;
 }
 export interface BrowserOptions {
+  profile?: ProfileOptions;
+  secrets?: Secrets;
   filters?: PageFilters;
   headless?: boolean;
   cdpUrl?: string;
@@ -84,12 +88,15 @@ export class Browser implements BrowserDriver {
   private contexts = new Map<string, Frame>();
   private frameIds = new WeakMap<Frame, string>();
   private frameViewer?: (frame: { image: string; url: string }) => void;
+  private rawGuards = new Map<string, Pick<PageState, "page_key" | "guards">>();
   private constructor(
     private browser: PlaywrightBrowser,
     private context: BrowserContext,
     private session: CDPSession,
     private tab: Page,
     private sessions: Map<Page, Promise<CDPSession>>,
+    private vault: SecretVault,
+    private profile?: ProfileStore,
     private onPointer?: BrowserOptions["onPointer"],
     private blockedUrl: (url: string) => boolean = () => false,
   ) {
@@ -101,6 +108,11 @@ export class Browser implements BrowserDriver {
     options: BrowserOptions = {},
   ): Promise<Browser> {
     const targetUrl = httpUrl(url, "Page URL");
+    const vault = new SecretVault(options.secrets);
+    const profile = options.profile
+      ? new ProfileStore(options.profile, targetUrl)
+      : undefined;
+    const storageState = await profile?.load();
     const filters = pageFilters(options.filters);
     const blockedUrl = blockedUrlMatcher(filters.blockedUrls);
     if (blockedUrl(targetUrl))
@@ -126,6 +138,7 @@ export class Browser implements BrowserDriver {
     let context: BrowserContext | undefined;
     try {
       context = await browser.newContext({
+        storageState,
         viewport: { width: 1120, height: 780 },
         acceptDownloads: false,
         serviceWorkers:
@@ -203,7 +216,9 @@ export class Browser implements BrowserDriver {
         session,
         page,
         sessions,
-        options.showPointer ? options.onPointer : undefined,
+        vault,
+        profile,
+        options.showPointer && !vault.enabled ? options.onPointer : undefined,
         blockedUrl,
       );
     } catch (cause) {
@@ -358,8 +373,25 @@ export class Browser implements BrowserDriver {
 
   /** Expose context navigation as runtime-owned controls; never accept model-supplied URLs. */
   private async readState(): Promise<PageState | null> {
+    if (this.vault.enabled) {
+      const url = await this.evaluate<string>("location.href");
+      await this.evaluate(
+        `window.__jevSecretFields=${JSON.stringify(this.vault.fields(url))};true`,
+      );
+    }
     const state = await this.evaluate<PageState | null>(READ_STATE);
     if (!state) return null;
+    for (const action of state.actions) {
+      if (!("secret_key" in action) || !action.secret_key) continue;
+      const value = await this.evaluate<string>(
+        `String(window.__jevFast.nodes.get(${action.node})?.value ?? "")`,
+      );
+      action.value = this.vault.matches(action.secret_key, value)
+        ? `{{secret:${action.secret_key}}}`
+        : value
+          ? "[redacted]"
+          : "";
+    }
     const offset = await this.frameOffset();
     state.context_id = this.contextId(this.frame);
     state.frame_offset = offset;
@@ -414,7 +446,21 @@ export class Browser implements BrowserDriver {
     );
     if (state.readiness === "empty" && this.contexts.size)
       state.readiness = "ready";
-    return state;
+    state.actions = state.actions.filter(
+      (action) =>
+        !("href" in action && action.href && this.blockedUrl(action.href)),
+    );
+    const redacted = this.vault.enabled ? this.vault.redact(state) : state;
+    redacted.fingerprint = fingerprint(redacted);
+    if (this.vault.enabled) {
+      this.rawGuards.set(redacted.fingerprint, {
+        page_key: state.page_key,
+        guards: state.guards,
+      });
+      while (this.rawGuards.size > 8)
+        this.rawGuards.delete(this.rawGuards.keys().next().value!);
+    }
+    return redacted;
   }
 
   async observe(screenshot = false): Promise<PageState> {
@@ -484,6 +530,12 @@ export class Browser implements BrowserDriver {
   }
 
   private async capture(state: PageState) {
+    if (this.vault.enabled) {
+      state.screenshot_status = "unavailable";
+      state.screenshot_error =
+        "Images are disabled for runs containing secrets.";
+      return;
+    }
     state.screenshot_status = "unavailable";
     state.screenshot_error =
       "Screenshot unavailable; DOM observation remains usable.";
@@ -545,7 +597,7 @@ export class Browser implements BrowserDriver {
       const current = await this.evaluate(`(() => { const c=window.__jevFast;
         return c ? [c.pageKey(),c.guard(c.nodes.get(${action.node}))] : null; })()`);
       return Bun.deepEquals(
-        current,
+        this.vault.enabled ? this.vault.redact(current) : current,
         [page.page_key, page.guards[String(action.node)]],
         true,
       );
@@ -576,6 +628,12 @@ export class Browser implements BrowserDriver {
       throw new Error("Invalid field text; nothing typed.");
     if (!(await this.fresh(page, action)))
       throw new StalePage("Page changed since this decision. Observe again.");
+    if (action.kind === "fill" && action.secret_key)
+      text = this.vault.resolve(
+        action,
+        await this.evaluate<string>("location.origin"),
+        text!,
+      );
     if ("context_id" in action && action.context_id) {
       const frame = this.contexts.get(action.context_id);
       if (!frame) throw new StalePage("Context is no longer offered.");
@@ -644,7 +702,8 @@ export class Browser implements BrowserDriver {
           "range",
           "color",
         ].includes(action.input_type ?? "");
-      const expected = [page.page_key, page.guards[String(action.node)]];
+      const guarded = this.rawGuards.get(page.fingerprint) ?? page;
+      const expected = [guarded.page_key, guarded.guards[String(action.node)]];
       const resolveTarget = (
         apply: boolean,
         point?: { x: number; y: number },
@@ -839,6 +898,8 @@ export class Browser implements BrowserDriver {
   }
 
   async watchFrames(onFrame: (frame: { image: string; url: string }) => void) {
+    if (this.vault.enabled)
+      throw new Error("Live images are disabled for runs containing secrets.");
     this.frameViewer = onFrame;
     await this.stopWatching?.();
     await this.session.send("Page.enable");
@@ -908,14 +969,18 @@ export class Browser implements BrowserDriver {
     return stop;
   }
 
-  async close(): Promise<void> {
+  async close(persist = true): Promise<void> {
     if (this.closed) return;
     this.closed = true;
     try {
       await this.stopWatching?.();
-      await this.context.close();
+      if (persist) await this.profile?.save(this.context);
     } finally {
-      await this.browser.close();
+      try {
+        await this.context.close();
+      } finally {
+        await this.browser.close();
+      }
     }
   }
 }

@@ -3,6 +3,7 @@ export type { AgentOptions } from "./agent";
 export type { WorkflowOptions } from "./workflow";
 export { outputCSV } from "./output";
 export type { OutputSchema, StructuredOutput } from "./output";
+export type { ProfileOptions, Secrets } from "./credentials";
 export { Browser, StalePage, fingerprint } from "./browser";
 export type { AgentPointer, BrowserDriver, BrowserOptions } from "./browser";
 export { SettingsStore } from "./config";

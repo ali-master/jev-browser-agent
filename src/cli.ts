@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
 import { Agent } from "./agent";
+import { Browser } from "./browser";
 import { startServer } from "./server";
 import { formatUsage } from "./usage";
 import { AgentReporter, Logger, logUrl } from "./logger";
@@ -18,6 +19,12 @@ const help = `Jev Browser Agent (Bun)
   --workflow NAME             Learn/reuse a successful local workflow
   --params JSON               String values for {{name}} goal parameters
   --schema PATH               Extract schema-validated JSON with field citations
+  --profile NAME              Restore/save an encrypted local login profile
+  --allow-origin ORIGIN       Additional profile origin (repeatable)
+  --secrets PATH              Private JSON secret bindings; never sent to models
+
+  jev login --url URL --profile NAME
+    Sign in manually in Chromium, then press Enter in this terminal to save.
 
 Logs go to stderr; the final answer goes to stdout. Debug logs include stage timings.
 
@@ -45,6 +52,9 @@ try {
       workflow: { type: "string" },
       params: { type: "string" },
       schema: { type: "string" },
+      profile: { type: "string" },
+      "allow-origin": { type: "string", multiple: true },
+      secrets: { type: "string" },
     },
   });
   const command = positionals[0] ?? "serve";
@@ -54,9 +64,49 @@ try {
     color: values.color,
   });
   if (values.help) console.log(help);
-  else if (positionals.length > 1 || !["serve", "run"].includes(command))
+  else if (
+    positionals.length > 1 ||
+    !["serve", "run", "login"].includes(command)
+  )
     throw new Error(help);
-  else if (command === "serve") {
+  else if (command === "login") {
+    if (!values.url || !values.profile)
+      throw new Error("Login needs --url and --profile.");
+    const browser = await Browser.create(values.url, {
+      headless: false,
+      profile: {
+        name: values.profile,
+        origins: [
+          new URL(values.url).origin,
+          ...(values["allow-origin"] ?? []),
+        ],
+      },
+    });
+    const cancel = () => {
+      void browser.close(false).finally(() => process.exit(130));
+    };
+    process.on("SIGINT", cancel);
+    process.on("SIGTERM", cancel);
+    let confirmed = false;
+    try {
+      logger.log(
+        "info",
+        "Sign in in Chromium, then press Enter here to save. Ctrl+C cancels.",
+      );
+      for await (const chunk of Bun.stdin.stream())
+        if (chunk.includes(10)) {
+          confirmed = true;
+          break;
+        }
+    } finally {
+      process.off("SIGINT", cancel);
+      process.off("SIGTERM", cancel);
+      await browser.close(confirmed);
+    }
+    if (!confirmed)
+      throw new Error("Login was not confirmed; profile was not saved.");
+    logger.log("info", "Encrypted login profile saved.");
+  } else if (command === "serve") {
     const port = Number(values.port ?? process.env.PORT ?? 8766);
     if (!Number.isInteger(port) || port < 1 || port > 65535)
       throw new Error("Port must be between 1 and 65535.");
@@ -127,6 +177,22 @@ try {
       headless: !values.headed,
       cdpUrl: process.env.BROWSER_CDP_URL,
       recordDir: values.record,
+      profile: values.profile
+        ? {
+            name: values.profile,
+            origins: [
+              new URL(values.url).origin,
+              ...(values["allow-origin"] ?? []),
+            ],
+          }
+        : undefined,
+      secrets: values.secrets
+        ? await Bun.file(values.secrets)
+            .json()
+            .catch(() => {
+              throw new Error("Invalid secrets JSON file.");
+            })
+        : undefined,
       outputSchema: values.schema
         ? await Bun.file(values.schema).json()
         : undefined,

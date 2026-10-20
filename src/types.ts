@@ -30,6 +30,7 @@ interface Target {
   context_id?: string;
   /** Scroll a visible, observed overflow container. */
   scroll_delta?: number;
+  secret_key?: string;
   rect?: { x: number; y: number; w: number; h: number };
 }
 export type Action =
@@ -68,6 +69,7 @@ export interface PageState {
 }
 
 export interface ElementView {
+  secret_key?: string;
   index: string;
   label: string;
   role: string;
@@ -223,6 +225,7 @@ export interface AgentMemory {
   }[];
 }
 export interface AgentState {
+  privacy?: { images_disabled: true };
   output?: import("./output").StructuredOutput;
   workflow?: {
     name: string;

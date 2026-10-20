@@ -584,6 +584,9 @@ $("task-result").addEventListener("click", (event) => {
 
 function render() {
   if (!state) return;
+  $("privacy-status").textContent = state.privacy?.images_disabled
+    ? "Private run · screenshots and live images are disabled. Activity and values use secret placeholders."
+    : "";
   $("workflow-status").textContent = state.workflow
     ? `Workflow ${state.workflow.name} · ${state.workflow.hits} reused actions · ${state.workflow.misses} mismatches${state.workflow.saved ? " · saved" : ""}${state.workflow.error ? ` · ${state.workflow.error}` : ""}`
     : "";
@@ -708,6 +711,20 @@ $("task-form").addEventListener("submit", (event) => {
       scenario: $("scenario").value,
       goal: $("goal").value,
       url: $("start-url").value,
+      ...($("profile-name").value.trim()
+        ? { profile: $("profile-name").value.trim() }
+        : {}),
+      ...($("secret-bindings").value.trim()
+        ? {
+            secrets: (() => {
+              try {
+                return JSON.parse($("secret-bindings").value);
+              } catch {
+                throw new Error("Secrets must be a valid JSON object.");
+              }
+            })(),
+          }
+        : {}),
       ...($("output-schema").value.trim()
         ? { outputSchema: JSON.parse($("output-schema").value) }
         : {}),
@@ -720,6 +737,7 @@ $("task-form").addEventListener("submit", (event) => {
           }
         : {}),
     });
+    $("secret-bindings").value = "";
     document.querySelector(".toolbar").scrollIntoView({ block: "start" });
     if ($("run-mode").value === "auto") await runAutomatically();
   }, "Opening a fresh browser…");

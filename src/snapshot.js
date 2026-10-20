@@ -39,7 +39,22 @@
     return id;
   };
   for (const [id, e] of cache.nodes) if (!e.isConnected) cache.nodes.delete(id);
-  const safe = (e) => !["password", "file", "hidden"].includes(e.type);
+  const secret = (e) =>
+    (window.__jevSecretFields ?? []).find((field) => field.label === name(e));
+  cache.secretVersions ||= new WeakMap();
+  const guardedValue = (e) => {
+    if (!secret(e)) return e.value ?? null;
+    const old = cache.secretVersions.get(e);
+    if (!old || old.value !== e.value)
+      cache.secretVersions.set(e, {
+        value: e.value,
+        version: (old?.version ?? 0) + 1,
+      });
+    return ["secret", cache.secretVersions.get(e).version];
+  };
+  const safe = (e) =>
+    !["file", "hidden"].includes(e.type) &&
+    (e.type !== "password" || secret(e));
   const visible = (e) => {
     for (let current = e; current; current = current.getRootNode().host)
       if (current.closest('[aria-hidden="true"],[inert]')) return false;
@@ -234,7 +249,11 @@
         )
       )
         return "textbox";
-      if (["text", "email", "url", "tel"].includes(e.type)) return "textbox";
+      if (
+        ["text", "email", "url", "tel"].includes(e.type) ||
+        (e.type === "password" && secret(e))
+      )
+        return "textbox";
     }
     return customClickable(e) ? "button" : null;
   };
@@ -249,7 +268,7 @@
       .filter(safe)
       .map((e) => [
         identity(e),
-        e.value,
+        guardedValue(e),
         e.checked,
         e.selectedIndex,
         e.disabled,
@@ -264,14 +283,14 @@
       identity(e),
       [
         identity(c),
-        c.value ?? null,
+        guardedValue(c),
         c.checked ?? null,
         c.matches(":disabled"),
         c.closest('[inert],[aria-disabled="true"]') !== null,
       ],
       role(e),
       name(e),
-      e.value ?? null,
+      guardedValue(e),
       e.checked ?? null,
       e.selectedIndex ?? null,
       e.readOnly ?? null,
@@ -358,6 +377,7 @@
       html_name: c.getAttribute("name") || "",
       role: rname,
       label: name(e) || rname,
+      ...(secret(c) ? { secret_key: secret(c).key } : {}),
       rect: { x: r.x, y: r.y, w: r.width, h: r.height },
     };
     if (e.tagName === "A" && /^https?:/.test(e.href)) base.href = e.href;
@@ -421,11 +441,15 @@
       const value =
         rname === "combobox" && !["INPUT", "TEXTAREA"].includes(c.tagName)
           ? e.innerText.trim()
-          : "value" in c
-            ? String(c.value)
-            : e.isContentEditable || rname === "combobox"
-              ? e.innerText.trim()
-              : "";
+          : secret(c)
+            ? c.value
+              ? "[redacted]"
+              : ""
+            : "value" in c
+              ? String(c.value)
+              : e.isContentEditable || rname === "combobox"
+                ? e.innerText.trim()
+                : "";
       actions.push({ ...base, kind: editable ? "fill" : "click", value });
       if (editable)
         actions.push({

@@ -1,6 +1,7 @@
 import { Agent } from "./agent";
 import { workflowOptions } from "./workflow";
 import { outputCSV, validateSchema } from "./output";
+import { ProfileStore, SecretVault } from "./credentials";
 import { Browser, StalePage } from "./browser";
 import type { AgentPointer } from "./browser";
 import { SettingsStore, object } from "./config";
@@ -288,6 +289,12 @@ export function startServer(
             if (typeof url !== "string" || !url.trim())
               throw new Error("Enter a starting page URL.");
             const config = await store.read();
+            const profile =
+              body.profile === undefined
+                ? undefined
+                : { name: body.profile as string };
+            if (profile) new ProfileStore(profile, url);
+            new SecretVault(body.secrets);
             if (body.outputSchema !== undefined)
               validateSchema(body.outputSchema);
             const workflow =
@@ -323,6 +330,9 @@ export function startServer(
               cdpUrl: options.cdpUrl,
               filters: config.filters,
               workflow,
+              profile,
+              secrets: body.secrets as
+                import("./credentials").Secrets | undefined,
               outputSchema: body.outputSchema as
                 import("./output").OutputSchema | undefined,
               onUpdate: publishState,

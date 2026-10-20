@@ -16,6 +16,7 @@ import { RunMemory } from "./memory";
 import { WorkflowCache, workflowGoal, workflowOptions } from "./workflow";
 import { extractOutput, validateSchema } from "./output";
 import type { OutputSchema } from "./output";
+import { SecretVault } from "./credentials";
 import type { WorkflowOptions } from "./workflow";
 import {
   createPlan,
@@ -90,6 +91,7 @@ export class Agent {
   private workflow?: WorkflowCache;
   private workflowLoaded = false;
   private workflowText?: string;
+  private vault: SecretVault;
 
   constructor(
     readonly browser: BrowserDriver,
@@ -97,6 +99,13 @@ export class Agent {
     goal: string,
     private options: AgentOptions = {},
   ) {
+    this.vault = new SecretVault(options.secrets);
+    if (this.vault.enabled && options.workflow)
+      throw new Error(
+        "Workflows cannot be recorded or replayed in a run containing secrets.",
+      );
+    goal = this.vault.redact(goal);
+    page = this.vault.redact(page);
     if (options.outputSchema) validateSchema(options.outputSchema);
     if (options.workflow) {
       this.workflow = new WorkflowCache(
@@ -135,6 +144,7 @@ export class Agent {
       model_calls: [],
       elapsed_ms: 0,
       record: Boolean(options.recordDir),
+      ...(this.vault.enabled ? { privacy: { images_disabled: true } } : {}),
       ...(this.workflow ? { workflow: this.workflow.stats } : {}),
     };
   }
@@ -902,7 +912,13 @@ export class Agent {
       );
       const check = values?.length === 1 ? values[0] : undefined;
       // Reuse only an explicit user value for the uniquely bound current field.
-      if (this.workflowText !== undefined) {
+      if (action.secret_key) {
+        text = `{{secret:${action.secret_key}}}`;
+        if (!state.goal.includes(text))
+          throw new Error(
+            "Include the named secret placeholder in the goal before using this field.",
+          );
+      } else if (this.workflowText !== undefined) {
         text = this.workflowText;
       } else if (
         check?.kind === "value" &&
@@ -1017,6 +1033,7 @@ export class Agent {
   }
 
   private acceptObservation(page: AgentState["page"]) {
+    page = this.vault.redact(page);
     const previous = this.state.page;
     if (previous.url !== page.url) this.memory.remember(previous);
     this.state.page = page;

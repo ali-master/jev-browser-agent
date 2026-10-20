@@ -278,6 +278,22 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
         </div>
         <details class="run-options settings-grid">
           <summary>Run options</summary>
+          <label for="profile-name">Login profile · optional name</label>
+          <input id="profile-name" placeholder="research" autocomplete="off" />
+          <label for="secret-bindings"
+            >Secrets JSON · held only for this run</label
+          >
+          <input
+            id="secret-bindings"
+            type="password"
+            autocomplete="off"
+            placeholder='{"password":{"value":"…","origin":"https://example.com","label":"Password"}}'
+          />
+          <p class="muted">
+            Use {{secret:password}} in the goal. Images are disabled when
+            secrets are supplied. Create a login profile with the jev login
+            command.
+          </p>
           <label for="workflow-name">Reusable workflow · optional name</label>
           <input
             id="workflow-name"
@@ -304,6 +320,7 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
           ></textarea>
         </details>
         <p id="workflow-status" class="muted" aria-live="polite"></p>
+        <p id="privacy-status" class="muted" aria-live="polite"></p>
       </form>
       <div class="toolbar">
         <div class="status">
