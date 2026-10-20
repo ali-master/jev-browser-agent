@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { chromium } from "playwright";
+import { chromium, errors } from "playwright";
 import type {
   Browser as PlaywrightBrowser,
   BrowserContext,
@@ -93,9 +93,10 @@ export class Browser implements BrowserDriver {
             handleSIGINT: false,
             handleSIGTERM: false,
           });
-    } catch {
+    } catch (cause) {
       throw new Error(
         "Cannot open Chromium. Run `bun run browser:install` or check BROWSER_CDP_URL.",
+        { cause },
       );
     }
     let context: BrowserContext | undefined;
@@ -115,23 +116,35 @@ export class Browser implements BrowserDriver {
         enabled: true,
       });
       await page.goto(targetUrl, {
-        waitUntil: "domcontentloaded",
+        waitUntil: "commit",
         timeout: 30_000,
       });
+      try {
+        await page.waitForLoadState("domcontentloaded", { timeout: 3000 });
+      } catch (error) {
+        // A committed page can still be observed while its scripts load.
+        if (!(error instanceof errors.TimeoutError)) throw error;
+      }
       return new Browser(
         browser,
         context,
         session,
         options.showPointer ? options.onPointer : undefined,
       );
-    } catch {
-      try {
-        await context?.close();
-      } finally {
-        await browser.close();
-      }
+    } catch (cause) {
+      await context?.close().catch(() => {});
+      await browser.close().catch(() => {});
+      const detail =
+        cause instanceof errors.TimeoutError
+          ? "The site did not respond within 30 seconds. Check the address and your connection, then try again."
+          : cause instanceof Error &&
+            cause.message.match(/\bnet::ERR_[A-Z0-9_]+\b/)?.[0];
       throw new Error(
-        "Could not open the requested page; the owned browser context was closed.",
+        `Could not open ${new URL(targetUrl).origin}. ${
+          detail ||
+          "Browser initialization failed. Check Chromium or BROWSER_CDP_URL and try again."
+        }`,
+        { cause },
       );
     }
   }

@@ -7,7 +7,8 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import type { CDPSession } from "playwright";
+import { chromium, errors } from "playwright";
+import type { Browser as PlaywrightBrowser, CDPSession } from "playwright";
 import { Browser, StalePage, fingerprint } from "../src/browser";
 import type { AgentPointer } from "../src/browser";
 import { fixture, page } from "./helpers";
@@ -851,36 +852,102 @@ test("opening a picker during fill records a click and never types into the new 
   });
 });
 
-test("readiness waits for the page's high-priority script to finish", async () => {
-  const script = Promise.withResolvers<Response>();
-  const site = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch(request) {
-      return new URL(request.url).pathname === "/app.js"
-        ? script.promise
-        : new Response(
-            '<button>Search</button><script async fetchpriority="high" src="/app.js"></script>',
-            { headers: { "Content-Type": "text/html" } },
-          );
-    },
-  });
-  await browser.close();
-  try {
-    browser = await Browser.create(`http://127.0.0.1:${site.port}`);
-    expect((await browser.observe()).readiness).toBe("loading");
-    script.resolve(
-      new Response('document.querySelector("button").textContent="Ready"', {
-        headers: { "Content-Type": "text/javascript" },
-      }),
-    );
-    expect((await browser.settle(await browser.observe())).readiness).toBe(
-      "ready",
-    );
-    expect((await browser.observe()).text).toContain("Ready");
-  } finally {
-    script.resolve(new Response(""));
+test.each(['async fetchpriority="high"', "defer", ""])(
+  "keeps a committed page open while its %s script loads",
+  async (attributes) => {
+    const script = Promise.withResolvers<Response>();
+    const site = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        return new URL(request.url).pathname === "/app.js"
+          ? script.promise
+          : new Response(
+              `<button>Search</button><script ${attributes} src="/app.js"></script>`,
+              { headers: { "Content-Type": "text/html" } },
+            );
+      },
+    });
     await browser.close();
-    await site.stop(true);
+    try {
+      browser = await Browser.create(`http://127.0.0.1:${site.port}`);
+      expect((await browser.observe()).readiness).toBe("loading");
+      script.resolve(
+        new Response('document.querySelector("button").textContent="Ready"', {
+          headers: { "Content-Type": "text/javascript" },
+        }),
+      );
+      expect((await browser.settle(await browser.observe())).readiness).toBe(
+        "ready",
+      );
+      expect((await browser.observe()).text).toContain("Ready");
+    } finally {
+      script.resolve(new Response(""));
+      await browser.close();
+      await site.stop(true);
+    }
+  },
+  15000,
+);
+
+test("reports the original network failure without closing an unrelated browser", async () => {
+  const unavailable = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () => new Response(""),
+  });
+  const url = `${unavailable.url}?token=private-test-token`;
+  await unavailable.stop(true);
+  const launch = chromium.launch.bind(chromium);
+  let owned: PlaywrightBrowser | undefined;
+  const opening = spyOn(chromium, "launch").mockImplementation(
+    async (options) => (owned = await launch(options)),
+  );
+  try {
+    const error = await Browser.create(url).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("net::ERR_CONNECTION_REFUSED");
+    expect((error as Error).message).not.toContain("private-test-token");
+    expect((error as Error).cause).toBeInstanceOf(Error);
+    expect(owned?.isConnected()).toBe(false);
+    expect((await browser.observe()).readiness).toBe("ready");
+  } finally {
+    opening.mockRestore();
+    await owned?.close();
+  }
+});
+
+test("preserves navigation timeouts even when cleanup also fails", async () => {
+  const owned = await chromium.launch();
+  const context = await owned.newContext();
+  const page = await context.newPage();
+  const cause = new errors.TimeoutError("page.goto: Timeout 30000ms exceeded.");
+  const opening = spyOn(chromium, "launch").mockResolvedValue(owned);
+  const creating = spyOn(owned, "newContext").mockResolvedValue(context);
+  const tab = spyOn(context, "newPage").mockResolvedValue(page);
+  const navigation = spyOn(page, "goto").mockRejectedValue(cause);
+  const close = context.close.bind(context);
+  const closing = spyOn(context, "close").mockImplementation(async () => {
+    await close();
+    throw new Error("Cleanup failed");
+  });
+  try {
+    const error = await Browser.create(`http://127.0.0.1:${server.port}`).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(
+      "did not respond within 30 seconds",
+    );
+    expect((error as Error).cause).toBe(cause);
+    expect(owned.isConnected()).toBe(false);
+  } finally {
+    for (const spy of [opening, creating, tab, navigation, closing])
+      spy.mockRestore();
+    await owned.close();
   }
 });

@@ -637,7 +637,7 @@ test("inspector rejects foreign origins, hosts, missing tokens, malformed JSON a
   ).toBe(404);
 });
 
-test("inspector reports a dead browser and can start a fresh task", async () => {
+test("inspector recovers from failed navigation and a dead browser", async () => {
   const models = mockModels();
   const store = new SettingsStore(await temporary(), {});
   await store.save(models.settings);
@@ -661,6 +661,22 @@ test("inspector reports a dead browser and can start a fresh task", async () => 
     url: localSite(),
     goal: "Search for Design hotels in Lisbon",
   };
+  const unavailable = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(""),
+  });
+  const closedUrl = `${unavailable.url}?token=private-test-token`;
+  await unavailable.stop(true);
+  const failed = await post("reset", { ...request, url: closedUrl });
+  expect(failed.status).toBe(400);
+  const failure = await failed.json();
+  expect(failure.error).toContain("net::ERR_CONNECTION_REFUSED");
+  expect(failure.error).not.toContain("private-test-token");
+  const failedState = await (await fetch(`${inspector.url}/api/state`)).json();
+  expect(failedState.error).toBe(failure.error);
+  expect(failedState.server_busy).toBe(false);
+  expect(failedState.page).toBeNull();
   const first = await (await post("reset", request)).json();
   expect(first.status).toBe("ready");
   await (
