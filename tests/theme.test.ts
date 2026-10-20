@@ -1,11 +1,107 @@
 import { afterEach, expect, test } from "bun:test";
 import { chromium } from "playwright";
 import { startServer } from "../src/server";
+import { SettingsStore } from "../src/config";
 
 const cleanup: (() => Promise<unknown> | void)[] = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
+
+test("configuration cards stay visible and toggle by keyboard without losing form edits", async () => {
+  const inspector = startServer({
+    port: 0,
+    settings: new SettingsStore(
+      `/tmp/jev-settings-cards-${crypto.randomUUID()}`,
+      {
+        TYPESAFE_MODEL: "test-decision",
+        TEXT_MODEL: "test-helper",
+      },
+    ),
+  });
+  cleanup.push(() => inspector.close());
+  const browser = await chromium.launch();
+  cleanup.push(() => browser.close());
+  const page = await browser.newPage({
+    viewport: { width: 1238, height: 900 },
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(inspector.url);
+  await page.waitForFunction(
+    () => !document.querySelector<HTMLDetailsElement>("#model-settings")!.open,
+  );
+  const settings = page.locator("#model-settings > summary");
+  const lab = page.locator("#model-lab > summary");
+  const options = page.locator(".run-options > summary");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page
+      .getByRole("combobox", { name: "Color theme" })
+      .selectOption(colorScheme);
+    for (const width of [320, 390, 768, 1238]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => scrollTo(0, 0));
+      for (const card of [settings, lab, options]) {
+        const box = await card.boundingBox();
+        expect(box!.height).toBeGreaterThanOrEqual(80);
+        expect(box!.y).toBeGreaterThanOrEqual(0);
+        expect(box!.y + box!.height).toBeLessThanOrEqual(900);
+        expect(await card.isVisible()).toBe(true);
+      }
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+    }
+  }
+  await settings.focus();
+  await settings.press("Enter");
+  expect(await page.locator("#decision-model").isVisible()).toBe(true);
+  await page.setViewportSize({ width: 320, height: 900 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1238, height: 900 });
+  await page.locator("#decision-model").fill("updated-model");
+  await settings.press("Space");
+  expect(await page.locator("#decision-model").isVisible()).toBe(false);
+  await settings.press("Enter");
+  expect(await page.locator("#decision-model").inputValue()).toBe(
+    "updated-model",
+  );
+  expect(await settings.locator(".settings-label-open").isVisible()).toBe(true);
+  await settings.press("Space");
+  await lab.focus();
+  await lab.press("Enter");
+  expect(await page.locator("#evaluation-label").isVisible()).toBe(true);
+  await page.locator("#evaluation-label").fill("Comparison draft");
+  await lab.press("Space");
+  expect(await page.locator("#evaluation-label").isVisible()).toBe(false);
+  await lab.press("Enter");
+  expect(await page.locator("#evaluation-label").inputValue()).toBe(
+    "Comparison draft",
+  );
+  expect(await lab.locator(".settings-label-open").isVisible()).toBe(true);
+  await lab.press("Space");
+  await options.focus();
+  await options.press("Enter");
+  await page.locator("#workflow-name").fill("saved-draft");
+  await page.locator("#workflow-params").fill('{"city":"Lisbon"}');
+  await options.press("Space");
+  expect(await page.locator("#workflow-name").isVisible()).toBe(false);
+  await options.press("Enter");
+  expect(await page.locator("#workflow-name").inputValue()).toBe("saved-draft");
+  expect(await page.locator("#workflow-params").inputValue()).toBe(
+    '{"city":"Lisbon"}',
+  );
+  expect(await options.locator(".settings-label-closed").isVisible()).toBe(
+    false,
+  );
+  expect(errors).toEqual([]);
+}, 20_000);
 
 test("inspector applies Zinc before styles load and preserves an explicit theme across reloads", async () => {
   const inspector = startServer({ port: 0 });

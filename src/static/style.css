@@ -1587,12 +1587,136 @@ footer {
   gap: 24px;
   margin: 20px 0;
 }
+.configuration-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.configuration-tools:has(> details[open]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.configuration-tools > details {
+  min-width: 0;
+  padding-top: 0;
+  border: 0;
+}
+.configuration-tools > details:not([open]) > summary {
+  height: 100%;
+}
+@media (max-width: 900px) {
+  .configuration-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .run-options.settings-grid {
   display: block;
   margin-top: 16px;
+  padding-top: 0;
+  border-top: 0;
 }
-.run-options[open] summary {
-  margin-bottom: 12px;
+.run-options[open] > summary {
+  margin-bottom: 18px;
+}
+.settings-disclosure > .settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 84px;
+  padding: 16px 18px;
+  list-style: none;
+  border: 1px solid var(--input);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 2px 4px var(--shadow);
+}
+.settings-toggle::-webkit-details-marker {
+  display: none;
+}
+.run-options > .settings-toggle {
+  background: var(--subtle);
+}
+.settings-disclosure > .settings-toggle:hover,
+.settings-disclosure[open] > .settings-toggle {
+  background: var(--secondary);
+  border-color: var(--ring);
+}
+.settings-toggle-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--warning-border);
+  border-radius: 11px;
+  background: var(--warning-soft);
+  color: var(--orange);
+}
+.settings-toggle-copy {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.settings-toggle-copy strong {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.settings-toggle-copy > span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.settings-toggle-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--input);
+  border-radius: 7px;
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 500;
+}
+.settings-toggle-action svg {
+  flex-shrink: 0;
+}
+.settings-disclosure[open] > summary .settings-toggle-action svg {
+  transform: rotate(180deg);
+}
+.settings-label-open,
+.settings-disclosure[open] > summary .settings-label-closed {
+  display: none;
+}
+.settings-disclosure[open] > summary .settings-label-open {
+  display: inline;
+}
+@media (max-width: 600px) {
+  .settings-disclosure > .settings-toggle {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 10px 12px;
+    padding: 14px;
+  }
+  .settings-toggle-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+  }
+  .settings-toggle-copy strong {
+    font-size: 14px;
+  }
+  .settings-toggle-copy > span {
+    font-size: 11px;
+  }
+  .settings-toggle-action {
+    grid-column: 2;
+    justify-self: start;
+    padding: 4px 9px;
+    font-size: 11px;
+  }
 }
 .run-options input:not([type="checkbox"]),
 .run-options textarea {
@@ -2092,18 +2216,14 @@ textarea::placeholder {
 }
 .settings-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
 }
 #settings-status {
   font-size: 13px;
 }
-#model-settings {
-  margin-bottom: 16px;
-  padding-top: 0;
-  border: 0;
-}
-#model-settings > .muted,
+.configuration-tools > details > .muted,
 #settings-form > .muted {
   margin-top: 12px;
 }

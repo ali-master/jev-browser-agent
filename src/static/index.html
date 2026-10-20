@@ -49,182 +49,340 @@
         </div>
         <div class="model-tag" id="model-tag">Configure your models</div>
       </section>
-      <details id="model-settings" open>
-        <summary>Agent settings · models &amp; page filters</summary>
-        <p class="muted">
-          Choose a decision model and a chat helper. Changes apply to the next
-          request. Base URLs usually end in /v1.
-        </p>
-        <form id="settings-form">
-          <div class="settings-grid">
-            <fieldset>
-              <legend>Decision model · Jev / System One</legend>
-              <label for="decision-base">Base URL</label>
-              <input
-                id="decision-base"
-                type="url"
-                required
-                placeholder="http://127.0.0.1:1234/v1"
-                spellcheck="false"
-              />
-              <label for="decision-model">Model identifier</label>
-              <input
-                id="decision-model"
-                required
-                placeholder="Identifier of your loaded decision model"
-                spellcheck="false"
-              />
-              <label for="decision-key">API key</label>
-              <input
-                id="decision-key"
-                type="password"
-                autocomplete="new-password"
-                placeholder="Optional for a local server"
-              />
-              <label class="overlay-control"
-                ><input id="decision-clear" type="checkbox" /> Clear saved API
-                key</label
+      <div class="configuration-tools">
+        <details id="model-settings" class="settings-disclosure" open>
+          <summary
+            class="settings-toggle"
+            aria-labelledby="agent-settings-title"
+            aria-describedby="agent-settings-hint"
+          >
+            <span class="settings-toggle-icon" aria-hidden="true">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
-              <details>
-                <summary>Optional token prices · USD per million</summary>
-                <label for="decision-input-price">Input price</label
-                ><input
-                  id="decision-input-price"
-                  type="number"
-                  min="0"
-                  max="1000000000"
-                  step="any"
-                  placeholder="Unknown"
-                />
-                <label for="decision-output-price">Output price</label
-                ><input
-                  id="decision-output-price"
-                  type="number"
-                  min="0"
-                  max="1000000000"
-                  step="any"
-                  placeholder="Unknown"
-                />
-              </details>
-            </fieldset>
-            <fieldset>
-              <legend>Chat helper · checklist and field text</legend>
-              <label for="text-base">Base URL</label>
-              <input
-                id="text-base"
-                type="url"
-                required
-                placeholder="http://127.0.0.1:1234/v1"
-                spellcheck="false"
-              />
-              <label for="text-model">Model identifier</label>
-              <input
-                id="text-model"
-                placeholder="A chat model; required for every task"
-                spellcheck="false"
-              />
-              <label for="text-key">API key</label>
-              <input
-                id="text-key"
-                type="password"
-                autocomplete="new-password"
-                placeholder="Optional for a local server"
-              />
-              <label class="overlay-control"
-                ><input id="text-clear" type="checkbox" /> Clear saved API
-                key</label
+                <path d="M4 7h4m4 0h8M4 17h8m4 0h4" />
+                <circle cx="10" cy="7" r="2" />
+                <circle cx="14" cy="17" r="2" />
+              </svg>
+            </span>
+            <span class="settings-toggle-copy">
+              <strong id="agent-settings-title">Agent settings</strong>
+              <span id="agent-settings-hint"
+                >Model connections, API keys, ad blocking &amp; page
+                cleanup</span
               >
-              <details>
-                <summary>Optional token prices · USD per million</summary>
-                <label for="text-input-price">Input price</label
-                ><input
-                  id="text-input-price"
-                  type="number"
-                  min="0"
-                  max="1000000000"
-                  step="any"
-                  placeholder="Unknown"
-                />
-                <label for="text-output-price">Output price</label
-                ><input
-                  id="text-output-price"
-                  type="number"
-                  min="0"
-                  max="1000000000"
-                  step="any"
-                  placeholder="Unknown"
-                />
-              </details>
-            </fieldset>
-          </div>
-          <div class="settings-grid page-filter-settings">
-            <fieldset>
-              <legend>Network filtering</legend>
-              <label class="overlay-control" for="block-ads">
-                <input id="block-ads" type="checkbox" /> Block ad requests
-              </label>
-              <p class="muted">
-                Uses EasyList. Rules download once per server or CLI process
-                when enabled; no page content is sent to the list provider.
-              </p>
-              <label for="blocked-urls"
-                >Blocked URLs · one pattern per line</label
+            </span>
+            <span class="settings-toggle-action" aria-hidden="true">
+              <span class="settings-label-closed">Configure</span>
+              <span class="settings-label-open">Close</span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
               >
-              <textarea
-                id="blocked-urls"
-                rows="4"
-                spellcheck="false"
-                aria-describedby="blocked-urls-help"
-                placeholder="https://example.com/ads/*&#10;*://ads.example.com/*"
-              ></textarea>
-              <p class="muted" id="blocked-urls-help">
-                Use full HTTP(S) URL patterns, with * for wildcards. Blocks
-                matching requests and redirects in the agent's tab. Blocked
-                links are also excluded from its choices.
-              </p>
-            </fieldset>
-            <fieldset>
-              <legend>Page cleanup</legend>
-              <label for="remove-selectors"
-                >Remove elements · one CSS selector per line</label
-              >
-              <textarea
-                id="remove-selectors"
-                rows="5"
-                spellcheck="false"
-                aria-describedby="remove-selectors-help"
-                placeholder=".advertisement&#10;aside.sponsored&#10;video"
-              ></textarea>
-              <p class="muted" id="remove-selectors-help">
-                Removes matching elements from the main document before each
-                analysis, including after navigation. Removing forms or scripts
-                can break a task. It does not undo scripts that already ran.
-              </p>
-            </fieldset>
-          </div>
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </span>
+          </summary>
           <p class="muted">
-            Browser filters apply when you start a new task. All filters are off
-            by default.
+            Choose a decision model and a chat helper. Changes apply to the next
+            request. Base URLs usually end in /v1.
           </p>
-          <div class="settings-actions">
-            <button id="save-settings" type="submit">Save settings</button>
-            <button id="check-models" type="button">
-              Check saved connections
+          <form id="settings-form">
+            <div class="settings-grid">
+              <fieldset>
+                <legend>Decision model · Jev / System One</legend>
+                <label for="decision-base">Base URL</label>
+                <input
+                  id="decision-base"
+                  type="url"
+                  required
+                  placeholder="http://127.0.0.1:1234/v1"
+                  spellcheck="false"
+                />
+                <label for="decision-model">Model identifier</label>
+                <input
+                  id="decision-model"
+                  required
+                  placeholder="Identifier of your loaded decision model"
+                  spellcheck="false"
+                />
+                <label for="decision-key">API key</label>
+                <input
+                  id="decision-key"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Optional for a local server"
+                />
+                <label class="overlay-control"
+                  ><input id="decision-clear" type="checkbox" /> Clear saved API
+                  key</label
+                >
+                <details>
+                  <summary>Optional token prices · USD per million</summary>
+                  <label for="decision-input-price">Input price</label
+                  ><input
+                    id="decision-input-price"
+                    type="number"
+                    min="0"
+                    max="1000000000"
+                    step="any"
+                    placeholder="Unknown"
+                  />
+                  <label for="decision-output-price">Output price</label
+                  ><input
+                    id="decision-output-price"
+                    type="number"
+                    min="0"
+                    max="1000000000"
+                    step="any"
+                    placeholder="Unknown"
+                  />
+                </details>
+              </fieldset>
+              <fieldset>
+                <legend>Chat helper · checklist and field text</legend>
+                <label for="text-base">Base URL</label>
+                <input
+                  id="text-base"
+                  type="url"
+                  required
+                  placeholder="http://127.0.0.1:1234/v1"
+                  spellcheck="false"
+                />
+                <label for="text-model">Model identifier</label>
+                <input
+                  id="text-model"
+                  placeholder="A chat model; required for every task"
+                  spellcheck="false"
+                />
+                <label for="text-key">API key</label>
+                <input
+                  id="text-key"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Optional for a local server"
+                />
+                <label class="overlay-control"
+                  ><input id="text-clear" type="checkbox" /> Clear saved API
+                  key</label
+                >
+                <details>
+                  <summary>Optional token prices · USD per million</summary>
+                  <label for="text-input-price">Input price</label
+                  ><input
+                    id="text-input-price"
+                    type="number"
+                    min="0"
+                    max="1000000000"
+                    step="any"
+                    placeholder="Unknown"
+                  />
+                  <label for="text-output-price">Output price</label
+                  ><input
+                    id="text-output-price"
+                    type="number"
+                    min="0"
+                    max="1000000000"
+                    step="any"
+                    placeholder="Unknown"
+                  />
+                </details>
+              </fieldset>
+            </div>
+            <div class="settings-grid page-filter-settings">
+              <fieldset>
+                <legend>Network filtering</legend>
+                <label class="overlay-control" for="block-ads">
+                  <input id="block-ads" type="checkbox" /> Block ad requests
+                </label>
+                <p class="muted">
+                  Uses EasyList. Rules download once per server or CLI process
+                  when enabled; no page content is sent to the list provider.
+                </p>
+                <label for="blocked-urls"
+                  >Blocked URLs · one pattern per line</label
+                >
+                <textarea
+                  id="blocked-urls"
+                  rows="4"
+                  spellcheck="false"
+                  aria-describedby="blocked-urls-help"
+                  placeholder="https://example.com/ads/*&#10;*://ads.example.com/*"
+                ></textarea>
+                <p class="muted" id="blocked-urls-help">
+                  Use full HTTP(S) URL patterns, with * for wildcards. Blocks
+                  matching requests and redirects in the agent's tab. Blocked
+                  links are also excluded from its choices.
+                </p>
+              </fieldset>
+              <fieldset>
+                <legend>Page cleanup</legend>
+                <label for="remove-selectors"
+                  >Remove elements · one CSS selector per line</label
+                >
+                <textarea
+                  id="remove-selectors"
+                  rows="5"
+                  spellcheck="false"
+                  aria-describedby="remove-selectors-help"
+                  placeholder=".advertisement&#10;aside.sponsored&#10;video"
+                ></textarea>
+                <p class="muted" id="remove-selectors-help">
+                  Removes matching elements from the main document before each
+                  analysis, including after navigation. Removing forms or
+                  scripts can break a task. It does not undo scripts that
+                  already ran.
+                </p>
+              </fieldset>
+            </div>
+            <p class="muted">
+              Browser filters apply when you start a new task. All filters are
+              off by default.
+            </p>
+            <div class="settings-actions">
+              <button id="save-settings" type="submit">Save settings</button>
+              <button id="check-models" type="button">
+                Check saved connections
+              </button>
+              <span id="settings-status" role="status"></span>
+            </div>
+            <p class="muted">
+              Keys stay on this computer and are sent only to the configured
+              provider. Leave a key blank to retain it. Changing a Base URL
+              clears its old key unless you enter a replacement.
+            </p>
+            <ul id="connection-checks" aria-live="polite"></ul>
+            <p class="muted">
+              Connection checks send small test requests to both saved
+              providers. Provider charges may apply.
+            </p>
+          </form>
+        </details>
+        <details id="model-lab" class="settings-disclosure">
+          <summary
+            class="settings-toggle"
+            aria-labelledby="model-lab-title"
+            aria-describedby="model-lab-hint"
+          >
+            <span class="settings-toggle-icon" aria-hidden="true">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M9 3h6m-5 0v6l-5.5 9a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9V3M8 14h8"
+                />
+                <path d="M10 18h.01m4-2h.01" />
+              </svg>
+            </span>
+            <span class="settings-toggle-copy">
+              <strong id="model-lab-title">Model lab</strong>
+              <span id="model-lab-hint"
+                >Compare reliability, speed &amp; token usage</span
+              >
+            </span>
+            <span class="settings-toggle-action" aria-hidden="true">
+              <span class="settings-label-closed">Compare</span>
+              <span class="settings-label-open">Close</span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </span>
+          </summary>
+          <p class="muted">
+            Run the travel, crowded and reading fixtures in fresh browsers using
+            your current model settings. Passing requires both the agent's goal
+            review and independent final-page assertions. Reports stay in this
+            server session; change models and run again to compare.
+          </p>
+          <form id="evaluation-form" class="lab-controls">
+            <label
+              >Model pair label
+              <input
+                id="evaluation-label"
+                value="Current models"
+                maxlength="120"
+                required
+            /></label>
+            <label
+              >Repetitions
+              <input
+                id="evaluation-repeat"
+                type="number"
+                min="1"
+                max="5"
+                value="1"
+                required
+            /></label>
+            <button id="evaluation-start" type="submit">Run evaluation</button>
+            <button id="evaluation-stop" type="button" disabled>Stop</button>
+            <button id="evaluation-download" type="button" disabled>
+              Export reports ↓
             </button>
-            <span id="settings-status" role="status"></span>
+          </form>
+          <p id="evaluation-status" role="status" aria-live="polite">
+            No evaluation yet.
+          </p>
+          <div class="lab-table">
+            <table class="usage-table">
+              <caption>
+                Completed comparisons · p50 and p95 include failed runs
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Model pair</th>
+                  <th scope="col">Passed</th>
+                  <th scope="col">p50 / p95 time</th>
+                </tr>
+              </thead>
+              <tbody id="evaluation-summary"></tbody>
+            </table>
+            <table class="usage-table">
+              <caption>
+                Latest run · reported tokens may be incomplete
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Case / run</th>
+                  <th scope="col">Result</th>
+                  <th scope="col">Wall / model time</th>
+                  <th scope="col">Input / output tokens</th>
+                  <th scope="col">Diagnosis</th>
+                </tr>
+              </thead>
+              <tbody id="evaluation-results"></tbody>
+            </table>
           </div>
-          <p class="muted">
-            Keys stay on this computer and are sent only to the configured
-            provider. Leave a key blank to retain it. Changing a Base URL clears
-            its old key unless you enter a replacement.
-          </p>
-          <ul id="connection-checks" aria-live="polite"></ul>
-          <p class="muted">
-            Connection checks send small test requests to both saved providers.
-            Provider charges may apply.
-          </p>
-        </form>
-      </details>
+        </details>
+      </div>
       <form id="task-form">
         <div class="task-label">
           <label for="goal">What should the agent do?</label>
@@ -276,8 +434,51 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
             Start task <span>↗</span>
           </button>
         </div>
-        <details class="run-options settings-grid">
-          <summary>Run options</summary>
+        <details class="run-options settings-grid settings-disclosure">
+          <summary
+            class="settings-toggle"
+            aria-labelledby="run-options-title"
+            aria-describedby="run-options-hint"
+          >
+            <span class="settings-toggle-icon" aria-hidden="true">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="4" y="3" width="16" height="18" rx="3" />
+                <path d="m8 8 1 1 2-2m2 1h3m-8 6 1 1 2-2m2 1h3" />
+              </svg>
+            </span>
+            <span class="settings-toggle-copy">
+              <strong id="run-options-title">Run options</strong>
+              <span id="run-options-hint"
+                >Login profiles, secrets, workflows &amp; structured
+                results</span
+              >
+            </span>
+            <span class="settings-toggle-action" aria-hidden="true">
+              <span class="settings-label-closed">Customize</span>
+              <span class="settings-label-open">Close</span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </span>
+          </summary>
           <label class="overlay-control"
             ><input id="vision-enabled" type="checkbox" /> Visual fallback for
             canvas · sends images to the chat helper</label
@@ -732,73 +933,6 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
           </p>
         </div>
       </section>
-      <details id="model-lab">
-        <summary>Model lab · compare reliability and speed</summary>
-        <p class="muted">
-          Run the travel, crowded and reading fixtures in fresh browsers using
-          your current model settings. Passing requires both the agent's goal
-          review and independent final-page assertions. Reports stay in this
-          server session; change models and run again to compare.
-        </p>
-        <form id="evaluation-form" class="lab-controls">
-          <label
-            >Model pair label
-            <input
-              id="evaluation-label"
-              value="Current models"
-              maxlength="120"
-              required
-          /></label>
-          <label
-            >Repetitions
-            <input
-              id="evaluation-repeat"
-              type="number"
-              min="1"
-              max="5"
-              value="1"
-              required
-          /></label>
-          <button id="evaluation-start" type="submit">Run evaluation</button>
-          <button id="evaluation-stop" type="button" disabled>Stop</button>
-          <button id="evaluation-download" type="button" disabled>
-            Export reports ↓
-          </button>
-        </form>
-        <p id="evaluation-status" role="status" aria-live="polite">
-          No evaluation yet.
-        </p>
-        <div class="lab-table">
-          <table class="usage-table">
-            <caption>
-              Completed comparisons · p50 and p95 include failed runs
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Model pair</th>
-                <th scope="col">Passed</th>
-                <th scope="col">p50 / p95 time</th>
-              </tr>
-            </thead>
-            <tbody id="evaluation-summary"></tbody>
-          </table>
-          <table class="usage-table">
-            <caption>
-              Latest run · reported tokens may be incomplete
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Case / run</th>
-                <th scope="col">Result</th>
-                <th scope="col">Wall / model time</th>
-                <th scope="col">Input / output tokens</th>
-                <th scope="col">Diagnosis</th>
-              </tr>
-            </thead>
-            <tbody id="evaluation-results"></tbody>
-          </table>
-        </div>
-      </details>
       <details id="run-usage">
         <summary>
           Model usage <span id="usage-summary">No requests yet</span>
