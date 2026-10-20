@@ -138,7 +138,8 @@ export interface ModelCall {
   http_status?: number;
   pricing?: Endpoint["pricing"];
 }
-export type ModelRole = "decision" | "text" | "planning" | "verification";
+export type ModelRole =
+  "decision" | "text" | "planning" | "verification" | "extraction";
 export type ModelObserver = (call: ModelCall) => void;
 export interface Decision extends ModelCall {
   choice: string;
@@ -222,6 +223,7 @@ export interface AgentMemory {
   }[];
 }
 export interface AgentState {
+  output?: import("./output").StructuredOutput;
   workflow?: {
     name: string;
     hits: number;

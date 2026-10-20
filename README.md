@@ -253,6 +253,27 @@ Only a run that passes the final goal review saves a recipe, in `.jev/workflows/
 
 Recipes contain instructions and typed values, so keep them private. This is conservative reuse, not generalization to a changed website; dynamic content can cause a safe cache miss. Library callers can set `workflow.directory`.
 
+## Structured results
+
+Pass `outputSchema` to `Agent.create` to extract typed data after the goal review:
+
+```ts
+const options = {
+  outputSchema: {
+    type: "object",
+    properties: { title: { type: "string" }, price: { type: "number" } },
+    required: ["title", "price"],
+    additionalProperties: false,
+  },
+};
+```
+
+The result is `agent.state.output`: `{ data, evidence, extracted_at }`. Every leaf has a JSON Pointer, source URL, exact quote and source hash. Missing/duplicate citations, invented quotes, schema mismatches and truncated responses fail extraction after one repair attempt; the run cannot claim completion with invalid structured data. Quotes prove that a source was observed; whether a quote supports a derived value still depends on the model.
+
+Use `jev run ... --schema output.schema.json` to print the structured result as JSON. In the inspector, paste the schema under **Run options**, then expand **Structured data & field evidence** and use **Copy JSON** or **Copy CSV**. CSV is available for a flat object or array of flat objects; `outputCSV(data)` is also exported by the library. String cells that could be spreadsheet formulas are escaped.
+
+Schemas use JSON Schema draft-07, validated with [Ajv](https://ajv.js.org/guide/getting-started.html), without type coercion, remote references or async validators. Schemas are limited to 64 KB and 32 levels. Format annotations are not validated. Extraction uses the current chat helper, sends only retained observations, and reports its own token usage under `extraction`.
+
 ## Page filters
 
 Expand **Agent settings** in the inspector to enable **Block ad requests**, add **Blocked URLs**, or choose CSS selectors under **Remove elements**. All three are off or empty by default. Saved filters live in `.jev/settings.json` alongside the model connections and are used by the inspector, CLI and library. Changes apply to the **next task**; an active run keeps the filters it started with.

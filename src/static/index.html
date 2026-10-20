@@ -294,6 +294,14 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
             Use {{city}} in the goal. Successful runs save locally; later runs
             reuse actions only when the page and planned step still match.
           </p>
+          <label for="output-schema"
+            >Structured output · optional JSON Schema</label
+          >
+          <textarea
+            id="output-schema"
+            rows="4"
+            placeholder='{"type":"object","properties":{"title":{"type":"string"}},"required":["title"],"additionalProperties":false}'
+          ></textarea>
         </details>
         <p id="workflow-status" class="muted" aria-live="polite"></p>
       </form>
@@ -490,6 +498,15 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
         <div class="result-body">
           <div class="result-reading">
             <div id="answer" class="answer-prose" dir="auto"></div>
+            <details id="structured-result" hidden>
+              <summary>Structured data &amp; field evidence</summary>
+              <div class="result-actions">
+                <button type="button" id="copy-output">Copy JSON</button>
+                <button type="button" id="copy-csv">Copy CSV</button>
+              </div>
+              <pre id="output-data" dir="ltr"></pre>
+              <dl id="output-evidence"></dl>
+            </details>
           </div>
           <div id="result-references" class="result-references">
             <div class="result-sources-heading">

@@ -434,6 +434,7 @@ function renderResult() {
     state.run_id,
     state.answer,
     state.answer_html,
+    state.output,
     review,
     state.history.length,
     state.elapsed_ms,
@@ -448,6 +449,19 @@ function renderResult() {
     `${state.history.length} actions · ${seconds(state.elapsed_ms || 0)}`;
   if (state.answer_html) $("answer").innerHTML = state.answer_html;
   else $("answer").textContent = state.answer;
+  $("structured-result").hidden = !state.output;
+  $("output-data").textContent = state.output
+    ? JSON.stringify(state.output.data, null, 2)
+    : "";
+  $("copy-csv").hidden = state.output_csv == null;
+  $("output-evidence").replaceChildren();
+  for (const item of state.output?.evidence || []) {
+    const term = document.createElement("dt"),
+      description = document.createElement("dd");
+    term.textContent = item.path || "(root)";
+    description.textContent = `${item.quote}\n${item.url}`;
+    $("output-evidence").append(term, description);
+  }
   $("copy-answer").querySelector("span").textContent = "Copy answer";
   $("copy-answer").dataset.copied = "false";
   $("result-copy-status").textContent =
@@ -544,6 +558,14 @@ $("task-result").addEventListener("click", (event) => {
   if (!button) return;
   if (button.id === "copy-answer")
     void copyResult(state.answer, button, "Answer");
+  else if (button.id === "copy-output")
+    void copyResult(
+      JSON.stringify(state.output, null, 2),
+      button,
+      "Structured output",
+    );
+  else if (button.id === "copy-csv")
+    void copyResult(state.output_csv, button, "CSV");
   else if (button.hasAttribute("data-copy-source"))
     void copyResult(button.dataset.copySource, button, "Source link");
   else if (button.hasAttribute("data-copy-code"))
@@ -686,6 +708,9 @@ $("task-form").addEventListener("submit", (event) => {
       scenario: $("scenario").value,
       goal: $("goal").value,
       url: $("start-url").value,
+      ...($("output-schema").value.trim()
+        ? { outputSchema: JSON.parse($("output-schema").value) }
+        : {}),
       ...($("workflow-name").value.trim()
         ? {
             workflow: {

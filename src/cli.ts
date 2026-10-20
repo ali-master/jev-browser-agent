@@ -17,6 +17,7 @@ const help = `Jev Browser Agent (Bun)
   --color auto                auto | always | never (auto respects NO_COLOR)
   --workflow NAME             Learn/reuse a successful local workflow
   --params JSON               String values for {{name}} goal parameters
+  --schema PATH               Extract schema-validated JSON with field citations
 
 Logs go to stderr; the final answer goes to stdout. Debug logs include stage timings.
 
@@ -43,6 +44,7 @@ try {
       color: { type: "string" },
       workflow: { type: "string" },
       params: { type: "string" },
+      schema: { type: "string" },
     },
   });
   const command = positionals[0] ?? "serve";
@@ -125,6 +127,9 @@ try {
       headless: !values.headed,
       cdpUrl: process.env.BROWSER_CDP_URL,
       recordDir: values.record,
+      outputSchema: values.schema
+        ? await Bun.file(values.schema).json()
+        : undefined,
       maxSteps: values["max-steps"] ? Number(values["max-steps"]) : undefined,
       workflow: values.workflow
         ? {
@@ -146,7 +151,8 @@ try {
         if (cancelled) break;
       }
       const state = agent.snapshot();
-      if (state.answer) console.log(state.answer);
+      if (state.output) console.log(JSON.stringify(state.output, null, 2));
+      else if (state.answer) console.log(state.answer);
       if (cancelled || state.status !== "done") process.exitCode = 1;
     } finally {
       reporter.finish(agent.state);

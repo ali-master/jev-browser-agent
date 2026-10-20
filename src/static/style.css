@@ -1587,6 +1587,37 @@ footer {
   gap: 24px;
   margin: 20px 0;
 }
+.run-options.settings-grid {
+  display: block;
+  margin-top: 16px;
+}
+.run-options[open] summary {
+  margin-bottom: 12px;
+}
+.run-options input,
+.run-options textarea {
+  width: 100%;
+}
+#structured-result {
+  margin-top: 24px;
+}
+#structured-result pre {
+  max-height: 400px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#output-evidence dt {
+  font-family: var(--mono);
+  margin-top: 12px;
+  font-weight: 600;
+}
+#output-evidence dd {
+  margin: 4px 0 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
 .settings-grid fieldset {
   min-width: 0;
   border: 1px solid var(--line);

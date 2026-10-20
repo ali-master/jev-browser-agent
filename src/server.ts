@@ -1,5 +1,6 @@
 import { Agent } from "./agent";
 import { workflowOptions } from "./workflow";
+import { outputCSV, validateSchema } from "./output";
 import { Browser, StalePage } from "./browser";
 import type { AgentPointer } from "./browser";
 import { SettingsStore, object } from "./config";
@@ -74,6 +75,7 @@ export function startServer(
     }),
     ...(opening ? { activity: { kind: "opening", started_at: opening } } : {}),
     answer_html: agent?.state.answer ? renderAnswer(agent.state.answer) : "",
+    output_csv: agent?.state.output ? outputCSV(agent.state.output.data) : null,
     text_model: textModel,
     max_steps: agent?.maxSteps ?? MAX_STEPS,
     revision,
@@ -286,6 +288,8 @@ export function startServer(
             if (typeof url !== "string" || !url.trim())
               throw new Error("Enter a starting page URL.");
             const config = await store.read();
+            if (body.outputSchema !== undefined)
+              validateSchema(body.outputSchema);
             const workflow =
               body.workflow === undefined
                 ? undefined
@@ -319,6 +323,8 @@ export function startServer(
               cdpUrl: options.cdpUrl,
               filters: config.filters,
               workflow,
+              outputSchema: body.outputSchema as
+                import("./output").OutputSchema | undefined,
               onUpdate: publishState,
               onPointer(pointer) {
                 latestPointer = { ...pointer, run_id: runId };

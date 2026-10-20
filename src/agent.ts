@@ -14,6 +14,8 @@ import {
 import { MAX_STEPS } from "./questions";
 import { RunMemory } from "./memory";
 import { WorkflowCache, workflowGoal, workflowOptions } from "./workflow";
+import { extractOutput, validateSchema } from "./output";
+import type { OutputSchema } from "./output";
 import type { WorkflowOptions } from "./workflow";
 import {
   createPlan,
@@ -42,6 +44,7 @@ export interface AgentOptions extends BrowserOptions {
   settings?: SettingsReader;
   onUpdate?: () => void;
   workflow?: WorkflowOptions;
+  outputSchema?: OutputSchema;
 }
 const stopped = (state: AgentState) =>
   ["done", "blocked", "error", "closed"].includes(state.status);
@@ -94,6 +97,7 @@ export class Agent {
     goal: string,
     private options: AgentOptions = {},
   ) {
+    if (options.outputSchema) validateSchema(options.outputSchema);
     if (options.workflow) {
       this.workflow = new WorkflowCache(
         goal,
@@ -141,6 +145,7 @@ export class Agent {
     options: AgentOptions = {},
   ): Promise<Agent> {
     const renderedGoal = workflowGoal(goal, options.workflow);
+    if (options.outputSchema) validateSchema(options.outputSchema);
     if (!renderedGoal.trim() || renderedGoal.length > 2000)
       throw new Error("Enter a goal of 1–2,000 characters.");
     const settings = options.settings ?? (() => new SettingsStore().read());
@@ -621,6 +626,30 @@ export class Agent {
       if (!(await this.browser.fresh(state.page)))
         throw new StalePage("Page changed during the final goal review.");
       if (review.complete) {
+        if (this.options.outputSchema) {
+          const output = await extractOutput(
+            this.options.outputSchema,
+            state.goal,
+            [
+              {
+                url: state.page.url,
+                title: state.page.title,
+                text: state.page.read_text || state.page.text,
+              },
+              ...this.memory.sources(),
+              ...state.checkpoints.flatMap((step) =>
+                step.verified?.evidence
+                  ? [{ url: step.verified.url, ...step.verified.evidence }]
+                  : [],
+              ),
+            ],
+            async () => (await this.settings()).text,
+            this.modelObserver("extraction"),
+          );
+          if (!(await this.browser.fresh(state.page)))
+            throw new StalePage("Page changed during extraction.");
+          state.output = output;
+        }
         state.answer = review.answer;
         state.status = "done";
         if (this.workflow) {
