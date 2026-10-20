@@ -197,15 +197,17 @@ if ("IntersectionObserver" in window) {
 }
 
 const tabs = [...document.querySelectorAll("[data-code-tab]")];
-const copyButton = document.querySelector("[data-copy]");
+const copyButton = document.querySelector(".code-window [data-copy]");
+const copyLabel = copyButton.querySelector("[data-copy-label]");
+const copyStatus = document.querySelector(".code-window [data-copy-status]");
 let activeTab = "install";
 let copyTimer;
 
 function selectTab(button) {
   activeTab = button.dataset.codeTab;
   clearTimeout(copyTimer);
-  setText("[data-copy-label]", "Copy");
-  setText("[data-copy-status]", "");
+  copyLabel.textContent = "Copy";
+  copyStatus.textContent = "";
   for (const tab of tabs) {
     const selected = tab === button;
     tab.setAttribute("aria-selected", String(selected));
@@ -217,6 +219,7 @@ function selectTab(button) {
     install: "installation commands",
     connect: "model configuration",
     run: "agent example",
+    cli: "global CLI commands",
   };
   copyButton.setAttribute("aria-label", "Copy " + labels[activeTab]);
 }
@@ -236,30 +239,44 @@ for (const button of tabs) {
     tabs[next].focus();
   });
 }
-copyButton.disabled = false;
-copyButton.addEventListener("click", async () => {
-  const copiedTab = activeTab;
-  const code = document.querySelector("#panel-" + copiedTab + " pre code");
-  try {
-    await navigator.clipboard.writeText(code.textContent);
-    if (activeTab !== copiedTab) return;
-    setText("[data-copy-label]", "Copied");
-    setText("[data-copy-status]", "Copied to clipboard.");
-  } catch {
-    if (activeTab !== copiedTab) return;
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(code);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    setText("[data-copy-label]", "Selected");
-    setText(
-      "[data-copy-status]",
-      "Clipboard unavailable. The code is selected; use your device's copy command.",
-    );
-  }
-  clearTimeout(copyTimer);
-  copyTimer = setTimeout(() => setText("[data-copy-label]", "Copy"), 2200);
-});
+for (const button of document.querySelectorAll("[data-copy]")) {
+  const label = button.querySelector("[data-copy-label]");
+  const status = button
+    .closest("[data-copy-region]")
+    .querySelector("[data-copy-status]");
+  const originalLabel = label.textContent;
+  let timer;
+  button.disabled = false;
+  button.addEventListener("click", async () => {
+    const copiedTab = activeTab;
+    const example = button.dataset.copyTarget;
+    const content = example
+      ? document.getElementById(example)
+      : document.querySelector("#panel-" + copiedTab + " pre code");
+    try {
+      await navigator.clipboard.writeText(
+        example ? content.innerText.trim() : content.textContent,
+      );
+      if (!example && activeTab !== copiedTab) return;
+      label.textContent = "Copied";
+      status.textContent = "Copied to clipboard.";
+    } catch {
+      if (!example && activeTab !== copiedTab) return;
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(content);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      label.textContent = "Selected";
+      status.textContent =
+        "Clipboard unavailable. The text is selected; use your device's copy command.";
+    }
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      label.textContent = originalLabel;
+    }, 2200);
+    if (!example) copyTimer = timer;
+  });
+}
 renderStep();
 if (motionEnabled) play();
