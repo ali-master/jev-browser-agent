@@ -2,6 +2,7 @@ import { object } from "./config";
 import { CURRENT_STEP, NEXT_ACTION, TARGET, TEXT_VALUE } from "./questions";
 import type {
   Action,
+  AgentMemory,
   ChoiceAnswer,
   CompletionCheck,
   Decision,
@@ -353,6 +354,7 @@ export async function choose(
   observe?: ModelObserver,
   checks?: CompletionCheck[],
   sinceAction = 0,
+  memory?: AgentMemory,
 ): Promise<Decision> {
   const { elements, targets, controls } = actionSpace(page.actions);
   const controlChecks = checks?.filter((check) => "label" in check) ?? [];
@@ -616,6 +618,22 @@ export async function choose(
       if (Object.keys(native).length) targets[operation] = native;
       else delete targets[operation];
     }
+  const avoided = new Set(
+    memory?.lessons
+      .filter((lesson) => lesson.avoid)
+      .map((lesson) => lesson.choice),
+  );
+  for (const operation of Object.keys(targets) as TargetOperation[]) {
+    const candidates = Object.fromEntries(
+      Object.entries(targets[operation]!).filter(
+        ([, action]) => !avoided.has(action.id),
+      ),
+    );
+    if (Object.keys(candidates).length) targets[operation] = candidates;
+    else delete targets[operation];
+  }
+  for (const [operation, action] of Object.entries(controls))
+    if (avoided.has(action.id)) delete controls[operation as Operation];
   const operations: Record<string, string> = {};
   for (const operation of Object.keys(targets) as TargetOperation[])
     operations[operation] = labels[operation];
@@ -682,6 +700,7 @@ export async function choose(
       page: { url: page.url, title: page.title, text: page.text },
       required_checks: checks,
       bound_targets: boundTargets,
+      memory,
       observation: {
         readiness: page.readiness ?? "ready",
         omitted_actions: page.omitted_actions,
@@ -795,11 +814,13 @@ export function fieldContext(
   page: PageState,
   history: HistoryEntry[],
   originalGoal = goal,
+  memory?: AgentMemory,
 ) {
   if (!("node" in action)) throw new Error("Text requires an observed field.");
   return {
     goal,
     original_goal: originalGoal,
+    memory,
     field: {
       node: action.node,
       ref: action.ref ?? `${page.document_id}:${action.node}`,

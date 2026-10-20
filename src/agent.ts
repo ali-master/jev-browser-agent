@@ -12,6 +12,7 @@ import {
   goalIdentifier,
 } from "./model";
 import { MAX_STEPS } from "./questions";
+import { RunMemory } from "./memory";
 import {
   createPlan,
   interpretGoal,
@@ -70,6 +71,8 @@ export class Agent {
   private pendingObservation: {
     entry: HistoryEntry;
     content: string;
+    page: Pick<PageState, "url" | "document_id" | "fingerprint" | "readiness">;
+    action: Action;
   } | null = null;
   private revisionCount = 0;
   private reviewCount = 0;
@@ -77,10 +80,7 @@ export class Agent {
   private lastWaitRecovery = 0;
   private planningDocument = "";
   private planContinuation: string | null = null;
-  private readonly readSources = new Map<
-    string,
-    Pick<PageState, "url" | "title" | "text">
-  >();
+  private readonly memory = new RunMemory();
 
   constructor(
     readonly browser: BrowserDriver,
@@ -148,7 +148,8 @@ export class Agent {
   snapshot() {
     return structuredClone({
       ...this.state,
-      read_sources: [...this.readSources.values()],
+      read_sources: this.memory.sources(),
+      memory: this.memory.context(this.state.page, this.state.checkpoints),
       elements: actionSpace(this.state.page.actions).elements,
       max_steps: this.maxSteps,
       usage: summarizeUsage(this.state.model_calls),
@@ -250,8 +251,8 @@ export class Agent {
     state.decision = null;
     this.activity("observing");
     if (!(await this.browser.fresh(state.page)))
-      state.page = await this.browser.observe(
-        this.options.screenshots || state.record,
+      this.acceptObservation(
+        await this.browser.observe(this.options.screenshots || state.record),
       );
     if (!state.checkpoints.length) {
       this.activity("planning");
@@ -477,6 +478,7 @@ export class Agent {
       state.checkpoints[state.plan_index]!.checks,
       state.checkpoints[state.plan_index]!.started_at_action ??
         state.history.length,
+      this.memory.context(state.page, state.checkpoints),
     );
     this.selection = {
       fingerprint: observed.fingerprint,
@@ -550,7 +552,7 @@ export class Agent {
         this.taskTime,
         state.goal,
         state.history,
-        [...this.readSources.values()],
+        this.memory.sources(),
       );
       state.completion_reviews.push(review);
       if (!(await this.browser.fresh(state.page)))
@@ -637,6 +639,7 @@ export class Agent {
         remaining: state.checkpoints.slice(state.plan_index),
         reason,
         recent_actions: state.history.slice(-6),
+        memory: this.memory.context(state.page, state.checkpoints),
       },
       this.taskTime,
       state.goal,
@@ -659,12 +662,14 @@ export class Agent {
     this.lastWaitRecovery = state.history.length;
     this.activity("observing");
     const before = state.page;
-    state.page = this.browser.settle
-      ? await this.browser.settle(
-          before,
-          this.options.screenshots || state.record,
-        )
-      : await this.browser.observe(this.options.screenshots || state.record);
+    this.acceptObservation(
+      this.browser.settle
+        ? await this.browser.settle(
+            before,
+            this.options.screenshots || state.record,
+          )
+        : await this.browser.observe(this.options.screenshots || state.record),
+    );
     await this.progress();
     if (
       stopped(state) ||
@@ -722,7 +727,7 @@ export class Agent {
             this.options.screenshots || state.record,
           )
         : await this.browser.observe(this.options.screenshots || state.record);
-      state.page = settled;
+      this.acceptObservation(settled);
       if (
         settled.fingerprint !== page.fingerprint &&
         settled.readiness !== "loading"
@@ -817,6 +822,7 @@ export class Agent {
           page,
           state.history,
           state.goal,
+          this.memory.context(page, state.checkpoints),
         );
         const config = (await this.settings()).text;
         const key = JSON.stringify({ context, config });
@@ -883,7 +889,17 @@ export class Agent {
       elapsed_ms: state.elapsed_ms,
     };
     state.history.push(entry);
-    this.pendingObservation = { entry, content: observedContent(page) };
+    this.pendingObservation = {
+      entry,
+      content: observedContent(page),
+      page: {
+        url: page.url,
+        document_id: page.document_id,
+        fingerprint: page.fingerprint,
+        readiness: page.readiness,
+      },
+      action: executed,
+    };
     this.activity("observing", action, text);
     await this.record(false);
     this.acceptObservation(
@@ -894,20 +910,12 @@ export class Agent {
 
   private acceptObservation(page: AgentState["page"]) {
     const previous = this.state.page;
-    if (previous.url !== page.url) {
-      this.readSources.set(previous.url, {
-        url: previous.url,
-        title: previous.title,
-        text: previous.read_text || previous.text,
-      });
-      // Bound retained pages; missing evidence must be revisited, never assumed.
-      if (this.readSources.size > 12)
-        this.readSources.delete(this.readSources.keys().next().value!);
-    }
+    if (previous.url !== page.url) this.memory.remember(previous);
     this.state.page = page;
     if (!this.pendingObservation) return;
-    const { entry, content } = this.pendingObservation;
+    const { entry, content, page: before, action } = this.pendingObservation;
     entry.page_changed = observedContent(page) !== content;
+    this.memory.record(before, action, entry.page_changed, entry.step);
     entry.url = page.url;
     entry.elapsed_ms = this.elapsed();
     this.pendingObservation = null;

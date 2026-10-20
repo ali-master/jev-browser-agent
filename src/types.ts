@@ -192,6 +192,20 @@ export interface CompletionReview {
   evidence: { url: string; quote: string }[];
   missing_steps: TaskStep[];
 }
+export interface AgentMemory {
+  pages: { url: string; title: string; excerpt: string }[];
+  completed: { instruction: string; url: string }[];
+  lessons: {
+    url: string;
+    action: string;
+    kind: Action["kind"];
+    attempts: number;
+    last_step: number;
+    outcome: "no_visible_change";
+    avoid: boolean;
+    choice: string | null;
+  }[];
+}
 export interface AgentState {
   goal: string;
   interpreted_goal?: string;
