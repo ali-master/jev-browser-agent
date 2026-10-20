@@ -8,9 +8,13 @@ test("scenario catalog has unique choices, valid destinations and editable multi
     choices.filter((item) => item.group === "Google Flights"),
   ).toHaveLength(4);
   expect(
+    choices.filter((item) => item.group === "Practice websites"),
+  ).toHaveLength(4);
+  expect(
     choices.filter((item) => item.group === "Research on real websites"),
-  ).toHaveLength(3);
+  ).toHaveLength(7);
   for (const item of choices.filter((item) => item.id !== "custom")) {
+    expect(item.goal.length).toBeGreaterThan(20);
     expect(item.goal.length).toBeLessThanOrEqual(2000);
     expect(new URL(item.url, "http://127.0.0.1:8766").protocol).toMatch(
       /^https?:$/,
@@ -24,4 +28,5 @@ test("scenario catalog has unique choices, valid destinations and editable multi
   ).toContain("2027-02-10");
   expect(scenarioOptions()).toContain("data-goal=");
   expect(scenarioOptions()).toContain('<optgroup label="Google Flights">');
+  expect(scenarioOptions()).toContain('<optgroup label="Practice websites">');
 });

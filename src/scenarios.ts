@@ -67,6 +67,42 @@ export function scenarios(now = new Date()) {
       goal: `${consent}Search one-way economy flights for one adult from New York John F. Kennedy (JFK) to Los Angeles (LAX) on ${depart}. Set the Stops filter to nonstop. Compare two visible nonstop results: report the airline, departure time, duration, and displayed price with currency. If fewer than two results exist, report that accurately. Verify the route, date, and nonstop filter.${searchOnly}`,
     },
     {
+      id: "books-compare",
+      group: "Practice websites",
+      label: "Books to Scrape · compare products",
+      description:
+        "Practice shop · category, product details, and price comparison.",
+      url: "https://books.toscrape.com/",
+      goal: "Open the Mystery category on Books to Scrape. Open the first two books individually, returning to the category through the breadcrumb between them. Report each full title, displayed price with currency, and stock availability from its product page. Compare the prices and cite both product URLs. Stop after the comparison; do not add anything to the basket. This is a practice shop with fictional prices.",
+    },
+    {
+      id: "books-pagination",
+      group: "Practice websites",
+      label: "Books to Scrape · catalog pagination",
+      description:
+        "Practice shop · browse a category, turn the page, inspect a product.",
+      url: "https://books.toscrape.com/",
+      goal: "Open the Fiction category on Books to Scrape, scroll to its pagination, and go to the second page. Open the first book on that second page. Report its full title, UPC, displayed price with currency, and stock availability from the product information. Cite the product URL and stop on its details page without adding it to the basket.",
+    },
+    {
+      id: "quotes-tags",
+      group: "Practice websites",
+      label: "Quotes to Scrape · tags and authors",
+      description:
+        "Practice site · filter by a tag and follow an author biography.",
+      url: "https://quotes.toscrape.com/",
+      goal: "On Quotes to Scrape, open the books tag. Find a quote by Jane Austen in the filtered list and open the about link belonging to her quote. Report her displayed birth date and birthplace, and cite the biography URL. Stop on her biography page; do not log in.",
+    },
+    {
+      id: "quotes-pagination",
+      group: "Practice websites",
+      label: "Quotes to Scrape · paginated discovery",
+      description:
+        "Practice site · next page, first author, and biography details.",
+      url: "https://quotes.toscrape.com/",
+      goal: "On Quotes to Scrape, use Next to reach the second page of quotes. Identify the author of the first quote on that page and open that quote's about link. Report the author's name, displayed birth date, and birthplace, citing the biography URL. Stop on that author's biography page; do not log in.",
+    },
+    {
       id: "wikipedia",
       group: "Research on real websites",
       label: "Wikipedia · linked research",
@@ -89,6 +125,42 @@ export function scenarios(now = new Date()) {
       description: "Inspect a public repository and its latest release.",
       url: "https://github.com/oven-sh/bun",
       goal: "On the public oven-sh/bun GitHub repository, open Releases and open the latest stable release (not a prerelease). Report the version, publication date, and two fixes from its release notes, then open the source tag page and cite both URLs. Do not sign in, download assets, or change anything.",
+    },
+    {
+      id: "open-library",
+      group: "Research on real websites",
+      label: "Open Library · advanced book search",
+      description:
+        "Fill title and author fields, search, and inspect an edition.",
+      url: "https://openlibrary.org/advancedsearch",
+      goal: "Use Open Library's advanced search to find The Time Machine by H. G. Wells, entering the title and author in their respective fields. Submit the search, open the matching work, and open one of its listed editions. Report the edition's title, author, publisher, publication year, and language as displayed; identify any missing information instead of guessing. Cite the edition URL and stop there. Do not sign in, borrow, or edit the catalog.",
+    },
+    {
+      id: "gutenberg",
+      group: "Research on real websites",
+      label: "Gutenberg · find and read a classic",
+      description:
+        "Search for a book, inspect its formats, and open the online text.",
+      url: "https://www.gutenberg.org/",
+      goal: "Search Project Gutenberg for Pride and Prejudice by Jane Austen and open the matching English book page. Report its author, language, and two available reading formats. Open Read online, navigate to Chapter I, and confirm its heading is visible. Cite the catalog and online reading URLs. Stop at Chapter I without downloading files.",
+    },
+    {
+      id: "mdn",
+      group: "Research on real websites",
+      label: "MDN · compare array methods",
+      description:
+        "Follow reference links, read examples, and compare two APIs.",
+      url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array",
+      goal: "From MDN's Array reference, open Array.prototype.map() and read its return value and examples. Then use the reference navigation to open Array.prototype.filter() and read the same sections. Explain how the methods differ and whether each changes the original array, based on these pages. Cite both reference URLs and stop after the comparison. Do not sign in or edit anything.",
+    },
+    {
+      id: "nasa",
+      group: "Research on real websites",
+      label: "NASA · compare planet facts",
+      description:
+        "Browse planet pages, find facts, and compare orbital periods.",
+      url: "https://science.nasa.gov/solar-system/planets/",
+      goal: "From NASA's planet directory, open the Mars facts page and read its Orbit and Rotation section. Then use the site navigation to open the Venus facts page and read the same section. Report each planet's rotation period and orbital period with units, then compare which takes longer to rotate and which takes longer to orbit the Sun. Cite both facts page URLs and stop after the comparison.",
     },
     {
       id: "custom",

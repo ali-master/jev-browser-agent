@@ -93,6 +93,16 @@ Choose a scenario, review its editable goal, then press **Start task**:
 | Wikipedia · linked research       | Search, read a section, follow a related article, cite both pages                   |
 | Hacker News · compare discussions | Open two discussions, collect visible facts, compare with citations                 |
 | GitHub · release research         | Open the latest stable Bun release, read fixes, inspect its source tag              |
+| Books to Scrape · compare products | Open a category, inspect two products, compare prices and stock                     |
+| Books to Scrape · catalog pagination | Scroll to pagination, open page two, inspect a book and its UPC                   |
+| Quotes to Scrape · tags and authors | Filter by a tag, find a named author, read their biography                          |
+| Quotes to Scrape · paginated discovery | Open the next page, identify the first author, follow their biography           |
+| Open Library · advanced book search | Fill title and author fields, search, inspect a specific edition                   |
+| Gutenberg · find and read a classic | Search for a book, inspect formats, open the text at Chapter I                     |
+| MDN · compare array methods       | Navigate between `map()` and `filter()`, read examples, compare with citations      |
+| NASA · compare planet facts       | Visit Mars and Venus facts, find rotation and orbital periods, compare with units  |
+
+**Practice websites** groups the Books to Scrape and Quotes to Scrape tasks. Their controlled catalogs are useful for trying category navigation, pagination, and links before moving to larger sites. Books to Scrape prices are fictional. Every preset fills in an editable goal and opens its own starting URL when you press **Start task**.
 
 Flight dates are generated 45 days after the inspector page loads, with a return seven days later. These are editable task presets, not site-specific automation scripts. Flights stop at results; research tasks do not sign in or post. Live completion depends on the models and the site's current controls. **Your website** accepts a custom URL and goal.
 

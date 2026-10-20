@@ -283,6 +283,14 @@ test("inspector saves private settings and drives a complete task through its co
     "wikipedia",
     "hacker-news",
     "github",
+    "books-compare",
+    "books-pagination",
+    "quotes-tags",
+    "quotes-pagination",
+    "open-library",
+    "gutenberg",
+    "mdn",
+    "nasa",
   ]) {
     await page.locator("#scenario").selectOption(id);
     expect((await page.locator("#goal").inputValue()).length).toBeGreaterThan(
