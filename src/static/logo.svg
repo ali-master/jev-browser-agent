@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Jev Browser Agent</title>
+  <desc id="desc">A charcoal J follows a curved path beneath an orange square with a clipped corner, representing one chosen action.</desc>
+  <rect width="256" height="256" rx="56" fill="#F5F5F2"/>
+  <path d="M160 44H184L196 56V80H160V44Z" fill="#F55B35"/>
+  <path d="M160 96H196V156C196 193.56 165.56 224 128 224C90.44 224 60 193.56 60 156V140L96 152V156C96 173.67 110.33 188 128 188C145.67 188 160 173.67 160 156V96Z" fill="#20211F"/>
+</svg>

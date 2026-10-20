@@ -4,15 +4,39 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="demo-token" content="__TOKEN__" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="author" content="Ali Torki" />
     <title>Jev Browser Agent</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <script src="/theme.js"></script>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <header>
-      <a href="/" aria-label="Homepage" class="brand"
-        >Jev<span> Browser Agent</span></a
-      >
-      <div class="local"><span class="dot"></span> Local inspector</div>
+      <a href="/" aria-label="Jev Browser Agent home" class="brand">
+        <img src="/logo.svg" width="32" height="32" alt="" />
+        <span>Jev<span> Browser Agent</span></span>
+      </a>
+      <div class="header-tools">
+        <div class="local"><span class="dot"></span> Local inspector</div>
+        <select
+          id="theme"
+          class="task-select theme-select"
+          data-theme-select
+          aria-label="Color theme"
+          disabled
+        >
+          <option value="system" data-description="Follow your device settings">
+            System
+          </option>
+          <option value="light" data-description="A clear, light workspace">
+            Light
+          </option>
+          <option value="dark" data-description="A quiet, dark workspace">
+            Dark
+          </option>
+        </select>
+      </div>
     </header>
     <main>
       <section class="intro">
@@ -465,8 +489,17 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
 Start a demo to inspect its structured state.</pre>
       </details>
       <footer>
-        <span>Jev Browser Agent · Bun · Based on Jev Ultrafast</span
-        ><span id="helper">Chat helper loading</span>
+        <span>Jev Browser Agent · Bun · Based on Jev Ultrafast</span>
+        <span class="developer-credit"
+          >Developed by
+          <a
+            href="https://github.com/ali-master"
+            target="_blank"
+            rel="author noopener noreferrer"
+            >Ali Torki</a
+          ></span
+        >
+        <span id="helper">Chat helper loading</span>
       </footer>
     </main>
     <script type="module" src="/app.js"></script>

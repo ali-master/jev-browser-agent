@@ -1773,8 +1773,12 @@ nav a:hover {
   background: var(--muted);
 }
 .footer-credit {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 24px;
   grid-column: 1 / -1;
-  font-size: 9px;
+  font-size: 11px;
   color: var(--muted);
   border-top: 1px solid var(--line);
   padding-top: 20px;
@@ -2251,9 +2255,6 @@ html[data-motion="off"] .reveal {
     justify-content: flex-start;
     gap: 25px;
     font-size: 10px;
-  }
-  .footer-credit {
-    font-size: 8px;
   }
 }
 @media (max-width: 390px) {

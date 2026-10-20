@@ -145,13 +145,26 @@ test("result UI renders sources without duplication and copies original answer, 
   );
   expect(await page.locator("#copy-answer").isEnabled()).toBe(true);
 
-  for (const width of [1238, 390]) {
-    await page.setViewportSize({ width, height: 900 });
+  for (const theme of ["light", "dark"]) {
+    await page
+      .getByRole("combobox", { name: "Color theme" })
+      .selectOption(theme);
     expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
+      await page
+        .locator("#task-result")
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
+    ).toBe(theme === "dark" ? "rgb(24, 24, 27)" : "rgb(255, 255, 255)");
+    expect(await page.locator("#answer pre code").innerText()).toContain(
+      "x < 10",
+    );
+    for (const width of [1238, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+    }
   }
   expect(errors).toEqual([]);
 }, 15_000);

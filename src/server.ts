@@ -19,7 +19,9 @@ const headers = {
 const files: Record<string, [string, string]> = {
   "/": ["index.html", "text/html"],
   "/app.js": ["app.js", "text/javascript"],
+  "/theme.js": ["theme.js", "text/javascript"],
   "/style.css": ["style.css", "text/css"],
+  "/logo.svg": ["logo.svg", "image/svg+xml"],
   "/fixture.html": ["fixture.html", "text/html"],
 };
 
