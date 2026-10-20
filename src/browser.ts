@@ -17,7 +17,11 @@ export interface BrowserDriver {
   observe(screenshot?: boolean): Promise<PageState>;
   settle?(page: PageState, screenshot?: boolean): Promise<PageState>;
   fresh(page: PageState, action?: Action): Promise<boolean>;
-  act(action: Action, page: PageState, text?: string): Promise<void>;
+  act(
+    action: Action,
+    page: PageState,
+    text?: string,
+  ): Promise<void | "popup_opened">;
   close(): Promise<void>;
 }
 export interface BrowserOptions {
@@ -50,6 +54,7 @@ export function fingerprint(page: PageState): string {
         url: page.url,
         title: page.title,
         text: page.text,
+        read_text: page.read_text,
         actions,
         scroll: page.scroll,
         document: page.marker[0],
@@ -99,6 +104,10 @@ export class Browser implements BrowserDriver {
         viewport: { width: 1120, height: 780 },
         acceptDownloads: false,
       });
+      await context.addInitScript(`window.__jevLoadedScripts=new WeakSet();
+        for(const type of ['load','error']) document.addEventListener(type,event=>{
+          if(event.target instanceof HTMLScriptElement) window.__jevLoadedScripts.add(event.target);
+        },true);`);
       const page = await context.newPage();
       if (options.headless === false) await page.bringToFront();
       const session = await context.newCDPSession(page);
@@ -170,15 +179,19 @@ export class Browser implements BrowserDriver {
         await this.evaluate(`(action => new Promise(resolve => {
           const field=window.__jevFast?.nodes.get(action.node);
           const autocomplete=action.kind==='fill' && field?.getAttribute('role')==='combobox';
-          let frames=0, stopped=false;
+          const section=action.kind==='click' && field instanceof HTMLAnchorElement && field.hash &&
+            field.href.split('#')[0]===location.href.split('#')[0];
+          let frames=0, stable=0, x=scrollX, y=scrollY, stopped=false;
           const finish=()=>{stopped=true;resolve(true)};
-          setTimeout(finish,autocomplete ? 200 : 50);
+          setTimeout(finish,section ? 2000 : autocomplete ? 200 : 50);
           const ready=()=>{
             if(stopped) return;
+            stable=scrollX===x && scrollY===y ? stable+1 : 0;
+            x=scrollX; y=scrollY;
             const ids=(field?.getAttribute('aria-controls')||field?.getAttribute('aria-owns')||'').split(/\\s+/).filter(Boolean);
             const roots=ids.length ? ids.map(id=>document.getElementById(id)).filter(Boolean) : [document];
             const options=roots.flatMap(root=>[...root.querySelectorAll('[role="option"]')]);
-            if(++frames>=2 && (!autocomplete || options.some(e=>{
+            if(++frames>=2 && (!section || stable>=4) && (!autocomplete || options.some(e=>{
               const r=e.getBoundingClientRect();
               return r.width && r.height && r.bottom>0 && r.top<innerHeight && e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
             }))) finish(); else requestAnimationFrame(ready);
@@ -282,7 +295,11 @@ export class Browser implements BrowserDriver {
     );
   }
 
-  async act(action: Action, page: PageState, text?: string): Promise<void> {
+  async act(
+    action: Action,
+    page: PageState,
+    text?: string,
+  ): Promise<void | "popup_opened"> {
     // Bun.deepEquals accepts null-prototype copies, unlike this input guard.
     if (!page.actions.some((observed) => isDeepStrictEqual(action, observed)))
       throw new Error("Action is not from the observed page.");
@@ -298,7 +315,25 @@ export class Browser implements BrowserDriver {
       return;
     }
     if (action.kind === "scroll") {
-      await this.movePointer({ x: page.w / 2, y: page.h * 0.8 }, page, action);
+      const origin = await this.evaluate<{
+        x: number;
+        y: number;
+      } | null>(`(() => {
+        for (const [x,y] of [[.5,.5],[.9,.5],[.1,.5],[.5,.25],[.95,.9],[.05,.9]]) {
+          const point={x:innerWidth*x,y:innerHeight*y};
+          let e=document.elementFromPoint(point.x,point.y);
+          if (!e || e.closest('iframe,canvas,embed,object,video,textarea,select,[contenteditable="true"],[role="application"]')) continue;
+          for (;e && e!==document.body && e!==document.documentElement;e=e.parentElement)
+            if (/(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight>e.clientHeight+2) break;
+          if (!e || e===document.body || e===document.documentElement) return point;
+        }
+        return null;
+      })()`);
+      await this.movePointer(
+        origin ?? { x: page.w / 2, y: page.h * 0.8 },
+        page,
+        action,
+      );
       if (!(await this.fresh(page)))
         throw new StalePage(
           "Page changed while moving the pointer. Observe again.",
@@ -375,6 +410,9 @@ export class Browser implements BrowserDriver {
             e.dispatchEvent(new Event('change',{bubbles:true}));
           }
         }
+        if (${apply} && !action.popup_owner && (action.kind==='fill' ||
+          ['combobox','textbox','searchbox','spinbutton'].includes(action.role)))
+          c.beginPopup?.(action.ref);
         return {x,y};
       })(${JSON.stringify(action)})`,
           apply && (action.kind === "select" || nativeFill),
@@ -417,8 +455,18 @@ export class Browser implements BrowserDriver {
             `document.activeElement===window.__jevFast?.nodes.get(${action.node})`,
             true,
           );
-          if (!focused)
+          if (!focused) {
+            const opened = await this.evaluate<boolean>(`(() => {
+              const state=${READ_STATE};
+              return Boolean(state?.actions.some(a=>a.popup_owner===${JSON.stringify(action.ref)}) &&
+                [...(window.__jevFast?.popupOwners||[])].some(([root,owner])=>owner===${JSON.stringify(action.ref)} && root.contains(document.activeElement)));
+            })()`);
+            if (opened) {
+              this.afterInput = { ...action, kind: "click" };
+              return "popup_opened";
+            }
             throw new Error("Field lost focus after clicking; nothing typed.");
+          }
           const modifiers = process.platform === "darwin" ? 4 : 2;
           await this.session.send("Input.dispatchKeyEvent", {
             type: "keyDown",

@@ -71,11 +71,90 @@
     "a[href],button,input,textarea,select,summary,label,[contenteditable],[onclick]," +
     roles.map((role) => '[role="' + role + '"]').join(",");
   const document_id = String(performance.timeOrigin);
+  const popupSelector = 'dialog,[role="dialog"],[role="listbox"],[role="menu"]';
+  const popups = [...document.querySelectorAll(popupSelector)].filter(visible);
+  cache.popupOwners ||= new Map();
+  cache.popupDates ||= new Map();
+  cache.committedDates ||= new WeakMap();
+  for (const [root, owner] of cache.popupOwners) {
+    const pending = cache.popupDates.get(root);
+    if (popups.includes(root)) {
+      const selected = [
+        ...root.querySelectorAll('[role="gridcell"][aria-selected="true"]'),
+      ].filter(visible);
+      // shortcut: English calendar labels only; add locale parsing for localized calendars.
+      const fullDate =
+        selected.length === 1 &&
+        name(selected[0]).match(
+          /\b(January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2},? \d{4}\b/,
+        );
+      if (pending && fullDate) pending.date = new Date(fullDate[0]);
+    } else {
+      const field = cache.nodes.get(Number(owner?.split(":").at(-1)));
+      if (
+        field?.isConnected &&
+        pending?.date &&
+        field.value !== pending.before
+      ) {
+        const date = pending.date,
+          compact = (s) => s.replace(/[^a-z0-9]/gi, "").toLowerCase();
+        const formats = [
+          { month: "short", day: "numeric" },
+          { weekday: "short", month: "short", day: "numeric" },
+        ];
+        // Retain a year only from an observed selected day, never from a short display alone.
+        if (
+          formats.some(
+            (format) =>
+              compact(date.toLocaleDateString("en-US", format)) ===
+              compact(field.value),
+          )
+        )
+          cache.committedDates.set(field, {
+            display: field.value,
+            date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+          });
+      }
+      cache.popupOwners.delete(root);
+      cache.popupDates.delete(root);
+    }
+  }
+  if (cache.pendingPopup) {
+    const added = popups.filter(
+      (root) => !cache.pendingPopup.before.includes(root),
+    );
+    for (const root of added) {
+      cache.popupOwners.set(root, cache.pendingPopup.ref);
+      cache.popupDates.set(root, { before: cache.pendingPopup.value });
+    }
+    if (added.length || performance.now() - cache.pendingPopup.at > 1500)
+      cache.pendingPopup = null;
+  }
+  cache.beginPopup = (ref) => {
+    const field = cache.nodes.get(Number(ref?.split(":").at(-1)));
+    if (field) cache.committedDates.delete(field);
+    cache.pendingPopup = {
+      ref,
+      value: field?.value,
+      at: performance.now(),
+      before: popups,
+    };
+  };
   const scopeSelector =
     'fieldset,form,[role="form"],dialog,[role="dialog"],article,li,tr,[role="row"]';
   const fieldScope = (e) => {
     const labels = [];
     let container = e.parentElement?.closest(scopeSelector);
+    let nearby = e.parentElement;
+    for (
+      let depth = 0;
+      !container && nearby && depth < 3;
+      depth++, nearby = nearby.parentElement
+    ) {
+      const text = nearby.innerText?.trim() || "";
+      if (text.length > name(e).length + 4 && text.length <= 600)
+        container = nearby;
+    }
     const context = container?.innerText?.trim().slice(0, 600) || "";
     for (
       let depth = 0;
@@ -92,7 +171,7 @@
           : name(heading) || container.getAttribute("name") || container.id;
       if (label) labels.unshift(label.trim().slice(0, 120));
     }
-    return { scope: labels.join(" / "), context };
+    return { scope: labels.join(" / ") || context.slice(0, 120), context };
   };
   const control = (e) =>
     e.tagName === "LABEL" && ["checkbox", "radio"].includes(e.control?.type)
@@ -169,9 +248,12 @@
       e.matches(":disabled"),
       e.getAttribute("aria-disabled"),
       e.getAttribute("aria-expanded"),
+      e.tagName === "SUMMARY" ? e.parentElement?.open : null,
       e.getAttribute("aria-checked"),
       e.getAttribute("aria-selected"),
+      e.closest('[role="gridcell"]')?.getAttribute("aria-selected") ?? null,
       e.getAttribute("href"),
+      c.form ? identity(c.form) : null,
       scope?.innerText?.slice(0, 6000) || "",
       fieldScope(e),
       e.tagName === "SELECT"
@@ -234,6 +316,7 @@
       y >= innerHeight
     )
       continue;
+    if (!e.contains(document.elementFromPoint(x, y))) continue;
     if (rname === "gridcell" && e.querySelector('button,[role="button"]'))
       continue;
     const base = {
@@ -246,9 +329,36 @@
       label: name(e) || rname,
       rect: { x: r.x, y: r.y, w: r.width, h: r.height },
     };
+    if (e.tagName === "A" && /^https?:/.test(e.href)) base.href = e.href;
+    if (c.form) base.form_ref = `${document_id}:${identity(c.form)}`;
+    if (e.tagName === "SUMMARY")
+      base.expanded = String(e.parentElement?.open === true);
+    if (
+      (e.tagName === "A" && /^https?:/.test(e.href)) ||
+      (e.type === "submit" && e.form)
+    )
+      base.native_navigation = true;
+    const popup = [...cache.popupOwners.keys()].find((root) =>
+      root.contains(e),
+    );
+    if (popup) base.popup_owner = cache.popupOwners.get(popup);
+    if (
+      e.tagName !== "SELECT" &&
+      (rname === "combobox" ||
+        (e.hasAttribute("aria-haspopup") &&
+          e.getAttribute("aria-haspopup") !== "false"))
+    )
+      base.has_popup = true;
     if (e.tagName === "INPUT") {
       base.input_type = e.type;
       base.constraints = { min: e.min, max: e.max, step: e.step };
+      const committed = cache.committedDates.get(e);
+      if (committed?.display === e.value) base.value_date = committed.date;
+    }
+    const cell = e.closest('[role="gridcell"]');
+    if (rname === "button" && cell) {
+      base.role = "gridcell";
+      base.selected = cell.getAttribute("aria-selected") || "false";
     }
     for (const key of ["checked", "selected", "expanded"]) {
       const value = e.getAttribute("aria-" + key);
@@ -278,11 +388,13 @@
           (e.tagName === "INPUT" && e.type === "range") ||
           (rname === "combobox" && ["INPUT", "TEXTAREA"].includes(e.tagName)));
       const value =
-        "value" in c
-          ? String(c.value)
-          : e.isContentEditable || rname === "combobox"
-            ? e.innerText.trim()
-            : "";
+        rname === "combobox" && !["INPUT", "TEXTAREA"].includes(c.tagName)
+          ? e.innerText.trim()
+          : "value" in c
+            ? String(c.value)
+            : e.isContentEditable || rname === "combobox"
+              ? e.innerText.trim()
+              : "";
       actions.push({ ...base, kind: editable ? "fill" : "click", value });
       if (editable)
         actions.push({
@@ -307,6 +419,20 @@
       editableForms.has(element.form)
     )
       action.submits_form = true;
+  }
+  const readingUrl = location.href.split("#")[0];
+  if (cache.readUrl !== readingUrl) {
+    cache.readUrl = readingUrl;
+    cache.readText = new Map();
+  }
+  // Retain only text actually seen that still exists unchanged in this document.
+  for (const [node, value] of cache.readText) {
+    if (
+      !node.isConnected ||
+      node.textContent.trim() !== value ||
+      !visible(node.parentElement)
+    )
+      cache.readText.delete(node);
   }
   const words = [],
     walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -334,11 +460,26 @@
       r.left < innerWidth
     ) {
       words.push(value);
+      const link = parent.closest("a[href]"),
+        sectionLink =
+          link?.hash &&
+          link.href.split("#")[0] === location.href.split("#")[0] &&
+          !parent.closest("h1,h2,h3,h4,h5,h6,[role=heading]");
+      // A table-of-contents label is navigation, not evidence of reading its section.
+      if (!sectionLink) cache.readText.set(node, value);
       length += value.length;
     }
   }
+  // Accessible labels carry visible control meaning that may not be in text nodes.
+  for (const label of new Set(
+    actions.map((action) => name(cache.nodes.get(action.node))),
+  ))
+    if (label && !words.includes(label)) words.push(label);
   const text = words.join("\n").slice(0, 6000),
     height = document.documentElement.scrollHeight;
+  while (cache.readText.size > 1000)
+    cache.readText.delete(cache.readText.keys().next().value);
+  const read_text = [...cache.readText.values()].join("\n").slice(-16000);
   const page_key = cache.pageKey(),
     guards = {};
   for (const a of actions)
@@ -346,15 +487,23 @@
       guards[a.node] = cache.guard(cache.nodes.get(a.node));
   // Compare meaning and identity. Geometry is always resolved and hit-tested just before input.
   const semantics = actions.map(({ rect, ...action }) => action);
-  const readiness = [...document.querySelectorAll('[aria-busy="true"]')].some(
-    visible,
-  )
-    ? "loading"
-    : actions.length
-      ? "ready"
-      : document.readyState === "complete"
-        ? "empty"
-        : "loading";
+  const pendingScripts =
+    document.readyState !== "complete" &&
+    [...document.scripts].some(
+      (script) =>
+        script.src &&
+        (!script.async || script.fetchPriority === "high") &&
+        !window.__jevLoadedScripts?.has(script),
+    );
+  const readiness =
+    pendingScripts ||
+    [...document.querySelectorAll('[aria-busy="true"]')].some(visible)
+      ? "loading"
+      : actions.length
+        ? "ready"
+        : document.readyState === "complete"
+          ? "empty"
+          : "loading";
   const marker = [
     performance.timeOrigin,
     location.href,
@@ -364,6 +513,7 @@
     innerHeight,
     document.title,
     text,
+    read_text,
     semantics,
     page_key[6],
     readiness,
@@ -399,6 +549,7 @@
     w: innerWidth,
     h: innerHeight,
     text,
+    read_text,
     scroll: { y: scrollY, height },
     actions,
     marker,

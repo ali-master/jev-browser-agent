@@ -84,6 +84,26 @@ test("a target moved by hover is reobserved instead of clicking its old coordina
   expect(await browser.evaluate("window.submits")).toBe(0);
 }, 15000);
 
+test("covered controls are not offered until their overlay is dismissed", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<button id="under" style="position:fixed;left:20px;top:20px">Search</button><div id="overlay" style="position:fixed;inset:0;background:white;z-index:10"><button id="dismiss">Close menu</button></div>';true`,
+  );
+  const covered = await browser.observe();
+  expect(covered.actions.some((action) => action.label === "Search")).toBe(
+    false,
+  );
+  await browser.act(
+    covered.actions.find((action) => action.label === "Close menu")!,
+    covered,
+  );
+  await browser.evaluate("document.querySelector('#overlay').remove();true");
+  expect(
+    (await browser.observe()).actions.some(
+      (action) => action.label === "Search",
+    ),
+  ).toBe(true);
+});
+
 test("observation tolerates a transient missing document body during navigation", async () => {
   await browser.evaluate(
     `document.body.remove();setTimeout(()=>{const body=document.createElement('body');body.innerHTML='<button>Arrived</button>';document.documentElement.appendChild(body)},650);true`,
@@ -129,6 +149,18 @@ test("visible wheel gestures scroll in both directions and report their actual o
   expect(gestures.map((p) => p.deltaY)).toEqual([560, -560]);
   expect(gestures[0]!.x).toBe(wheels[0]!.x);
   expect(gestures[0]!.y).toBe(wheels[0]!.y);
+});
+
+test("document scrolling avoids an embedded canvas that consumes wheel events", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<main style="height:2500px"><h1>Article</h1><canvas style="position:absolute;left:0;top:550px;width:100%;height:400px"></canvas></main>';document.querySelector('canvas').addEventListener('wheel',e=>e.preventDefault(),{passive:false});true`,
+  );
+  const state = await browser.observe();
+  await browser.act(
+    state.actions.find((action) => action.id === "scroll_down")!,
+    state,
+  );
+  expect((await browser.observe()).scroll.y).toBeGreaterThan(400);
 });
 
 test.each([undefined, false])(
@@ -281,7 +313,7 @@ test.each([
   expect(await browser.evaluate("window.submits")).toBe(0);
 });
 
-test("textless overlay blocks clicks even when semantic state is unchanged", async () => {
+test("a textless overlay invalidates the observation and blocks an old click", async () => {
   const state = await browser.observe();
   const action = state.actions.find(
     (action) => action.label === "Search hotels",
@@ -289,7 +321,7 @@ test("textless overlay blocks clicks even when semantic state is unchanged", asy
   await browser.evaluate(
     "const cover=document.createElement('div');cover.style.cssText='position:fixed;inset:0;z-index:9999;background:white';document.body.append(cover);true",
   );
-  expect(await browser.fresh(state)).toBe(true);
+  expect(await browser.fresh(state)).toBe(false);
   await expect(browser.act(action, state)).rejects.toBeInstanceOf(StalePage);
   expect(await browser.evaluate("window.submits")).toBe(0);
 });
@@ -434,6 +466,77 @@ test("same-labeled fields expose distinct document identities and bounded form c
   expect(contexts[1]!.field.html_id).toBe("recipient");
   expect(contexts[1]!.field.context).toContain("Recipient");
   expect(contexts[1]!.field.context.length).toBeLessThanOrEqual(600);
+});
+
+test("reading retains seen text across scrolling but drops changed, hidden and navigated content", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<h1 id="title">Observed book</h1><p id="price">Price £14.39</p><p>Historical line</p><div style="height:1100px"></div><p>UPC 123456</p>';true`,
+  );
+  const initial = await browser.observe();
+  expect(initial.read_text).toContain("Observed book");
+  expect(initial.read_text).not.toContain("UPC 123456");
+  await browser.evaluate("scrollTo(0,document.body.scrollHeight);true");
+  const scrolled = await browser.observe();
+  expect(scrolled.text).not.toContain("Observed book");
+  expect(scrolled.read_text).toContain("Observed book");
+  expect(scrolled.read_text).toContain("UPC 123456");
+  await browser.evaluate(
+    "document.querySelector('#price').textContent='Price £99.99';document.querySelector('#title').hidden=true;true",
+  );
+  expect(await browser.fresh(scrolled)).toBe(false);
+  const changed = await browser.observe();
+  expect(changed.read_text).not.toContain("£14.39");
+  expect(changed.read_text).not.toContain("£99.99");
+  expect(changed.read_text).not.toContain("Observed book");
+  expect(changed.read_text).toContain("Historical line");
+  await browser.evaluate("history.pushState({},'', '/new-document');true");
+  expect((await browser.observe()).read_text).not.toContain("Historical line");
+});
+
+test("repeated links include nearby author context without semantic containers", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<div><span>by Jane Austen <a href="/austen">(about)</a></span></div><div><span>by Albert Einstein <a href="/einstein">(about)</a></span></div>';true`,
+  );
+  const links = (await browser.observe()).actions.filter(
+    (a) => a.kind === "click",
+  );
+  expect(links).toHaveLength(2);
+  expect("scope" in links[0]! && links[0].scope).toContain("Jane Austen");
+  expect("scope" in links[1]! && links[1].scope).toContain("Albert Einstein");
+  expect("href" in links[0]! && links[0].href).toBe(
+    `http://127.0.0.1:${server.port}/austen`,
+  );
+});
+
+test("a section link does not count as reading its offscreen heading or body", async () => {
+  await browser.evaluate(
+    `document.body.innerHTML='<h1>Observed API</h1><a href="#examples">Examples</a><div style="height:1200px"></div><h2 id="examples"><a href="#examples">Examples</a></h2><p>Map each number to its square.</p>';scrollTo(0,0);true`,
+  );
+  const before = await browser.observe();
+  expect(before.text).toContain("Examples");
+  expect(before.read_text).not.toContain("Examples");
+  const link = before.actions.find((action) => action.kind === "click");
+  expect(link).toBeDefined();
+  await browser.act(link!, before);
+  const after = await browser.observe();
+  expect(after.read_text).toContain("Observed API");
+  expect(after.read_text).toContain("Examples");
+  expect(after.read_text).toContain("Map each number to its square.");
+});
+
+test("section navigation waits for smooth scrolling before verifying the page", async () => {
+  await browser.evaluate(
+    `document.documentElement.style.scrollBehavior='smooth';document.body.innerHTML='<a href="#facts">Orbit and Rotation</a><div style="height:3500px"></div><h2 id="facts">Orbit and Rotation</h2><p>A day lasts 243 Earth days.</p><div style="height:900px"></div>';true`,
+  );
+  const before = await browser.observe();
+  await browser.act(
+    before.actions.find((action) => action.kind === "click")!,
+    before,
+  );
+  const after = await browser.observe();
+  expect(after.scroll.y).toBeGreaterThan(3000);
+  expect(after.text).toContain("A day lasts 243 Earth days.");
+  expect(await browser.fresh(after)).toBe(true);
 });
 
 test("clicks custom controls and visible labels of hidden radios without duplicate native targets", async () => {
@@ -642,3 +745,142 @@ test.each(["reject", "hang"])(
     }
   },
 );
+
+test("tracks custom popup ownership and clears it after confirming the selection", async () => {
+  await browser.evaluate(`document.body.innerHTML='<button id="origin" role="combobox" aria-label="Origin" aria-haspopup="dialog" aria-expanded="false">Choose city</button><dialog id="popup" aria-label="Choose origin"><input aria-label="City"><button id="berlin" role="option">Berlin</button></dialog>';
+  const origin=document.querySelector('#origin'), popup=document.querySelector('#popup');
+  origin.onclick=()=>{origin.setAttribute('aria-expanded','true');popup.showModal()};
+  document.querySelector('#berlin').onclick=()=>{origin.textContent='Berlin';origin.setAttribute('aria-label','Origin. Berlin');origin.setAttribute('aria-expanded','false');popup.close()};true`);
+  const before = await browser.observe();
+  const opener = before.actions.find((a) => a.label === "Origin")!;
+  await browser.act(opener, before);
+  const opened = await browser.observe();
+  const option = opened.actions.find((a) => a.label === "Berlin")!;
+  expect("popup_owner" in option && option.popup_owner).toBe(
+    "ref" in opener && opener.ref,
+  );
+  await browser.act(option, opened);
+  const after = await browser.observe();
+  expect(after.actions.some((a) => "popup_owner" in a && a.popup_owner)).toBe(
+    false,
+  );
+  expect(after.text).toContain("Origin. Berlin");
+  expect(after.text).not.toContain("Open Origin");
+  expect(after.actions.find((a) => a.label === "Origin. Berlin")).toMatchObject(
+    { value: "Berlin", expanded: "false" },
+  );
+});
+
+test("mouse presses carry the left-button mask required by custom widgets", async () => {
+  await browser.evaluate(
+    `window.buttonsSeen=[];for(const type of ['mousedown','mouseup']) document.addEventListener(type,e=>window.buttonsSeen.push([type,e.buttons]));true`,
+  );
+  const state = await browser.observe();
+  await browser.act(
+    state.actions.find((a) => a.label === "Search hotels")!,
+    state,
+  );
+  expect(await browser.evaluate("window.buttonsSeen")).toEqual([
+    ["mousedown", 1],
+    ["mouseup", 0],
+  ]);
+});
+
+test("calendar evidence retains the selected year only after its popup commits a changed value", async () => {
+  await browser.evaluate(`document.body.innerHTML='<input aria-label="Departure" id="depart"><dialog id="calendar"><div role="gridcell" aria-selected="false" id="day"><div role="button"><span aria-label="Saturday, October 24, 2026">24</span></div></div><button id="apply">Done</button><button id="cancel">Cancel</button></dialog>';
+  const field=document.querySelector('#depart'), dialog=document.querySelector('#calendar'), day=document.querySelector('#day');
+  field.onclick=()=>dialog.showModal(); day.onclick=()=>day.setAttribute('aria-selected','true');
+  document.querySelector('#apply').onclick=()=>{field.value='Sat, Oct 24';dialog.close()};
+  document.querySelector('#cancel').onclick=()=>dialog.close();true`);
+  let state = await browser.observe();
+  expect(state.actions.find((a) => a.label === "Departure")).not.toHaveProperty(
+    "value_date",
+  );
+  await browser.act(
+    state.actions.find((a) => a.label === "Open Departure")!,
+    state,
+  );
+  state = await browser.observe();
+  await browser.act(
+    state.actions.find((a) => a.label === "Saturday, October 24, 2026")!,
+    state,
+  );
+  state = await browser.observe();
+  expect(
+    state.actions.find((a) => a.label === "Saturday, October 24, 2026"),
+  ).toMatchObject({ role: "gridcell", selected: "true" });
+  expect(state.actions.find((a) => a.label === "Departure")).not.toHaveProperty(
+    "value_date",
+  );
+  await browser.act(
+    state.actions.find((a) => a.label === "Done")!,
+    state,
+  );
+  state = await browser.observe();
+  expect(state.actions.find((a) => a.label === "Departure")).toMatchObject({
+    value: "Sat, Oct 24",
+    value_date: "2026-10-24",
+  });
+  await browser.act(
+    state.actions.find((a) => a.label === "Open Departure")!,
+    state,
+  );
+  state = await browser.observe();
+  await browser.act(
+    state.actions.find((a) => a.label === "Cancel")!,
+    state,
+  );
+  state = await browser.observe();
+  expect(state.actions.find((a) => a.label === "Departure")).not.toHaveProperty(
+    "value_date",
+  );
+});
+
+test("opening a picker during fill records a click and never types into the new unseen field", async () => {
+  await browser.evaluate(`document.body.innerHTML='<input id="date" aria-label="Date"><dialog id="picker"><input aria-label="Date editor" autofocus></dialog>';
+  document.querySelector('#date').onclick=()=>document.querySelector('#picker').showModal();true`);
+  const before = await browser.observe();
+  const field = before.actions.find(
+    (a) => a.kind === "fill" && a.label === "Date",
+  )!;
+  expect(await browser.act(field, before, "2026-10-24")).toBe("popup_opened");
+  const after = await browser.observe();
+  expect(after.actions.find((a) => a.label === "Date editor")).toMatchObject({
+    value: "",
+    popup_owner: "ref" in field ? field.ref : undefined,
+  });
+});
+
+test("readiness waits for the page's high-priority script to finish", async () => {
+  const script = Promise.withResolvers<Response>();
+  const site = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      return new URL(request.url).pathname === "/app.js"
+        ? script.promise
+        : new Response(
+            '<button>Search</button><script async fetchpriority="high" src="/app.js"></script>',
+            { headers: { "Content-Type": "text/html" } },
+          );
+    },
+  });
+  await browser.close();
+  try {
+    browser = await Browser.create(`http://127.0.0.1:${site.port}`);
+    expect((await browser.observe()).readiness).toBe("loading");
+    script.resolve(
+      new Response('document.querySelector("button").textContent="Ready"', {
+        headers: { "Content-Type": "text/javascript" },
+      }),
+    );
+    expect((await browser.settle(await browser.observe())).readiness).toBe(
+      "ready",
+    );
+    expect((await browser.observe()).text).toContain("Ready");
+  } finally {
+    script.resolve(new Response(""));
+    await browser.close();
+    await site.stop(true);
+  }
+});

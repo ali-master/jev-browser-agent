@@ -10,15 +10,21 @@ interface Target {
   ref?: string;
   scope?: string;
   context?: string;
+  href?: string;
+  form_ref?: string;
   html_id?: string;
   html_name?: string;
   input_type?: string;
   constraints?: { min: string; max: string; step: string };
   value?: string;
   current_value?: string;
+  value_date?: string;
   checked?: string;
   selected?: string;
   expanded?: string;
+  has_popup?: boolean;
+  popup_owner?: string;
+  native_navigation?: boolean;
   submits_form?: boolean;
   rect?: { x: number; y: number; w: number; h: number };
 }
@@ -40,6 +46,7 @@ export interface PageState {
   url: string;
   title: string;
   text: string;
+  read_text?: string;
   w: number;
   h: number;
   scroll: { y: number; height: number };
@@ -61,12 +68,17 @@ export interface ElementView {
   ref?: string;
   scope?: string;
   context?: string;
+  href?: string;
+  form_ref?: string;
   input_type?: string;
   constraints?: { min: string; max: string; step: string };
   value?: string;
+  value_date?: string;
   checked?: string;
   selected?: string;
   expanded?: string;
+  has_popup?: boolean;
+  popup_owner?: string;
   submits_form?: boolean;
   operations: TargetOperation[];
   options?: { index: string; label: string; value: string }[];
