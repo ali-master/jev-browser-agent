@@ -15,7 +15,7 @@ import {
   page,
   provider,
 } from "./helpers";
-import type { DecisionRequest, ModelCall } from "../src/types";
+import type { DecisionRequest, HistoryEntry, ModelCall } from "../src/types";
 
 const servers: Bun.Server<undefined>[] = [];
 afterEach(async () => {
@@ -322,6 +322,258 @@ test("an offscreen checkpoint target offers scrolling instead of unrelated click
   expect(decision.choice).toBe("scroll_down");
 });
 
+test("reading checkpoints offer scrolling without unrelated clicks or typing", async () => {
+  const state = page();
+  state.actions.push({
+    id: "scroll_down",
+    kind: "scroll",
+    label: "Scroll down",
+    delta: 560,
+  });
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(body.questions.click_target).toBeUndefined();
+    expect(body.questions.type_text_target).toBeUndefined();
+    return Response.json(decisionResponse(body, "SCROLL_DOWN"));
+  });
+  servers.push(p.server);
+  expect(
+    (
+      await choose(
+        state,
+        "Read the product information",
+        [],
+        p.endpoint,
+        false,
+        undefined,
+        [{ kind: "text", includes: "UPC" }],
+      )
+    ).choice,
+  ).toBe("scroll_down");
+});
+
+test("submission targets belong to the form containing the required fields", async () => {
+  const state = page();
+  state.actions = [
+    {
+      id: "title",
+      kind: "fill",
+      node: 1,
+      label: "Search",
+      role: "textbox",
+      form_ref: "advanced",
+      value: "The Time Machine",
+    },
+    {
+      id: "header",
+      kind: "click",
+      node: 2,
+      label: "Search",
+      role: "button",
+      has_popup: true,
+    },
+    {
+      id: "submit",
+      kind: "click",
+      node: 3,
+      label: "Search",
+      role: "button",
+      form_ref: "advanced",
+    },
+  ];
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["3"]);
+    return Response.json(decisionResponse(body, "CLICK", "3"));
+  });
+  servers.push(p.server);
+  expect(
+    (
+      await choose(
+        state,
+        "Submit the book search",
+        [],
+        p.endpoint,
+        false,
+        undefined,
+        [
+          { kind: "value", label: "Search", equals: "The Time Machine" },
+          { kind: "action", label: "Search", action: "click" },
+        ],
+      )
+    ).choice,
+  ).toBe("submit");
+});
+
+test.each(["text", "fragment"])(
+  "reading offers only the observed same-page section: %s",
+  async (kind) => {
+    const state = page();
+    state.actions = [
+      {
+        id: "section",
+        kind: "click",
+        role: "link",
+        label: "Examples",
+        node: 1,
+        href: `${state.url}#examples`,
+      },
+      {
+        id: "elsewhere",
+        kind: "click",
+        role: "link",
+        label: "Examples",
+        node: 2,
+        href: "https://elsewhere.test/#examples",
+      },
+      { id: "scroll", kind: "scroll", label: "Scroll down", delta: 560 },
+    ];
+    const p = provider(async (request) => {
+      const body = await request.json();
+      expect(Object.keys(body.questions.click_target.criteria)).toEqual(["1"]);
+      if (kind === "fragment") {
+        expect(body.state.required_checks).toEqual([
+          { kind: "url", includes: "#examples" },
+        ]);
+        expect(body.questions.operation.instructions).toContain(
+          "requires URL fragment #examples",
+        );
+        expect(body.questions.operation.criteria.SCROLL_DOWN).toBeUndefined();
+      } else
+        expect(body.questions.operation.criteria.SCROLL_DOWN).toBeDefined();
+      return Response.json(decisionResponse(body, "CLICK", "1"));
+    });
+    servers.push(p.server);
+    expect(
+      (
+        await choose(state, "Read Examples", [], p.endpoint, false, undefined, [
+          kind === "text"
+            ? { kind: "text", includes: "Examples" }
+            : { kind: "url", includes: "#examples" },
+        ])
+      ).choice,
+    ).toBe("section");
+  },
+);
+
+test("a menu opener already executed in this checkpoint is not clicked again", async () => {
+  const state = page();
+  state.actions = [
+    {
+      id: "menu",
+      kind: "click",
+      node: 1,
+      label: "Explore",
+      role: "button",
+      ref: "document:1",
+    },
+    {
+      id: "destination",
+      kind: "click",
+      node: 2,
+      label: "Venus",
+      role: "link",
+      ref: "document:2",
+    },
+  ];
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["2"]);
+    return Response.json(decisionResponse(body, "CLICK", "2"));
+  });
+  servers.push(p.server);
+  const history = [
+    { kind: "click", action: "Explore", ref: "document:1" },
+  ] as HistoryEntry[];
+  expect(
+    (
+      await choose(
+        state,
+        "Open Explore then Venus",
+        history,
+        p.endpoint,
+        false,
+        undefined,
+        [
+          {
+            kind: "action",
+            label: "Explore",
+            action: "click",
+            ref: "document:1",
+          },
+          {
+            kind: "action",
+            label: "Venus",
+            action: "click",
+            ref: "document:2",
+          },
+          { kind: "url", includes: "/venus" },
+        ],
+        0,
+      )
+    ).choice,
+  ).toBe("destination");
+});
+
+test.each(["false", "true"])(
+  "menu state selects a click only while expansion is needed: expanded=%s",
+  async (expanded) => {
+    const state = page();
+    state.actions = [
+      {
+        id: "menu",
+        kind: "click",
+        node: 1,
+        role: "button",
+        label: "Explore",
+        expanded,
+      },
+    ];
+    const p = provider(async (request) => {
+      const body = await request.json();
+      expect(Boolean(body.questions.click_target)).toBe(expanded === "false");
+      return Response.json(
+        decisionResponse(body, expanded === "false" ? "CLICK" : "BLOCKED", "1"),
+      );
+    });
+    servers.push(p.server);
+    await choose(state, "Open Explore", [], p.endpoint, false, undefined, [
+      { kind: "expanded", label: "Explore", equals: true },
+    ]);
+  },
+);
+
+test("same-named navigation targets remain distinguishable by their observed context", async () => {
+  const state = page();
+  state.actions = [1, 2].map((node) => ({
+    id: `a${node}`,
+    kind: "click",
+    node,
+    role: "link",
+    label: "(about)",
+    scope: node === 1 ? "by Jane Austen" : "by Albert Einstein",
+  }));
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(Object.keys(body.questions.click_target.criteria)).toHaveLength(2);
+    return Response.json(decisionResponse(body, "CLICK", "1"));
+  });
+  servers.push(p.server);
+  expect(
+    (
+      await choose(
+        state,
+        "Open Jane Austen's biography",
+        [],
+        p.endpoint,
+        false,
+        undefined,
+        [{ kind: "action", label: "(about)", action: "click" }],
+      )
+    ).choice,
+  ).toBe("a1");
+});
+
 test.each([
   ["non-JSON", "Thinking: Lisbon"],
   ["extra keys", '{"text":"Lisbon","extra":true}'],
@@ -549,4 +801,594 @@ test("request telemetry snapshots pricing without leaking credentials", async ()
     outputUsdPerMillion: 2,
   });
   expect(JSON.stringify(calls)).not.toContain("test-key");
+});
+
+test("value steps open custom controls and restrict popup actions to their observed owner", async () => {
+  const state = page();
+  state.actions[0] = {
+    ...state.actions[0]!,
+    kind: "fill",
+    node: 10,
+    role: "combobox",
+    label: "Origin",
+    ref: "doc:10",
+    has_popup: true,
+    expanded: "false",
+  };
+  state.actions[1] = {
+    ...state.actions[0],
+    id: "e2",
+    kind: "click",
+    label: "Open Origin",
+  };
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(body.questions.type_text_target).toBeUndefined();
+    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["1"]);
+    return Response.json(decisionResponse(body, "CLICK", "1"));
+  });
+  servers.push(p.server);
+  const check = [
+    {
+      kind: "value" as const,
+      label: "Origin",
+      ref: "doc:10",
+      equals: "Berlin",
+    },
+  ];
+  expect(
+    (
+      await choose(
+        state,
+        "Select Berlin",
+        [],
+        p.endpoint,
+        false,
+        undefined,
+        check,
+      )
+    ).choice,
+  ).toBe("e2");
+  state.actions = [
+    {
+      id: "option",
+      kind: "click",
+      node: 30,
+      ref: "doc:30",
+      popup_owner: "doc:10",
+      role: "option",
+      label: "Berlin, Germany",
+    },
+    {
+      id: "other",
+      kind: "click",
+      node: 31,
+      ref: "doc:31",
+      popup_owner: "doc:11",
+      role: "option",
+      label: "Berlin, Maryland",
+    },
+  ];
+  expect(
+    (
+      await choose(
+        state,
+        "Select Berlin",
+        [],
+        p.endpoint,
+        false,
+        undefined,
+        check,
+      )
+    ).choice,
+  ).toBe("option");
+});
+
+test("a page waiting for scripts offers no premature clicks or typing", async () => {
+  const state = { ...page(), readiness: "loading" as const };
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(Object.keys(body.questions.operation.criteria)).toEqual([
+      "WAIT",
+      "BLOCKED",
+    ]);
+    expect(Object.keys(body.questions)).toEqual(["operation"]);
+    return Response.json(decisionResponse(body, "WAIT"));
+  });
+  servers.push(p.server);
+  expect(
+    (await choose(state, "Enter Berlin", [], p.endpoint, false)).choice,
+  ).toBe("wait");
+});
+
+test("autocomplete prefers the requested city option over unrelated popup buttons", async () => {
+  const state = page();
+  state.actions = [
+    {
+      id: "input",
+      node: 1,
+      ref: "doc:1",
+      popup_owner: "doc:0",
+      kind: "fill",
+      role: "combobox",
+      label: "City",
+      value: "New York",
+      expanded: "true",
+    },
+    {
+      id: "city",
+      node: 2,
+      ref: "doc:2",
+      popup_owner: "doc:0",
+      kind: "click",
+      role: "option",
+      label: "New York, USA",
+      selected: "false",
+    },
+    {
+      id: "multiple",
+      node: 3,
+      ref: "doc:3",
+      popup_owner: "doc:0",
+      kind: "click",
+      role: "button",
+      label: "Select multiple airports",
+    },
+    {
+      id: "wrong",
+      node: 4,
+      ref: "doc:4",
+      popup_owner: "doc:0",
+      kind: "click",
+      role: "option",
+      label: "West New York, USA",
+    },
+  ];
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["2"]);
+    expect(body.questions.type_text_target).toBeUndefined();
+    return Response.json(decisionResponse(body, "CLICK", "2"));
+  });
+  servers.push(p.server);
+  expect(
+    (
+      await choose(state, "Choose New York", [], p.endpoint, false, undefined, [
+        {
+          kind: "value",
+          label: "Destination",
+          ref: "doc:0",
+          equals: "New York",
+        },
+      ])
+    ).choice,
+  ).toBe("city");
+});
+
+test.each([false, true])(
+  "autocomplete selects observed aliases only after entering a query: queried=%s",
+  async (queried) => {
+    const state = page();
+    state.actions = [
+      {
+        id: "input",
+        node: 1,
+        ref: "doc:1",
+        popup_owner: "doc:0",
+        kind: "fill",
+        role: "combobox",
+        label: "Where else?",
+        value: "LHR",
+      },
+      {
+        id: "airport",
+        node: 2,
+        ref: "doc:2",
+        popup_owner: "doc:0",
+        kind: "click",
+        role: "option",
+        label: "Heathrow Airport (LHR)",
+      },
+      {
+        id: "other",
+        node: 3,
+        ref: "doc:3",
+        popup_owner: "doc:99",
+        kind: "click",
+        role: "option",
+        label: "London City Airport (LCY)",
+      },
+      { id: "scroll", kind: "scroll", label: "Scroll down", delta: 600 },
+    ];
+    const p = provider(async (request) => {
+      const body = await request.json();
+      const operation = queried ? "CLICK" : "TYPE_TEXT";
+      const index = queried ? "2" : "1";
+      expect(body.questions.operation.criteria.SCROLL_DOWN).toBeUndefined();
+      expect(
+        Object.keys(
+          body.questions[`${operation.toLowerCase()}_target`].criteria,
+        ),
+      ).toEqual([index]);
+      expect(
+        body.questions[queried ? "type_text_target" : "click_target"],
+      ).toBeUndefined();
+      return Response.json(decisionResponse(body, operation, index));
+    });
+    servers.push(p.server);
+    const result = await choose(
+      state,
+      "Select London Heathrow (LHR)",
+      queried
+        ? [
+            {
+              step: 1,
+              action: "Where else?",
+              ref: "doc:1",
+              kind: "fill",
+              choice: "input",
+              probability: 1,
+              confidence: 1,
+              latency_ms: 0,
+              text: "LHR",
+              text_helper: null,
+              text_latency_ms: 0,
+              operation: "TYPE_TEXT",
+              target: "1",
+              page_changed: true,
+              url: state.url,
+              usage: {},
+              executed_ms: 0,
+              elapsed_ms: 0,
+            },
+          ]
+        : [],
+      p.endpoint,
+      false,
+      undefined,
+      [
+        {
+          kind: "value",
+          label: "Where from?",
+          ref: "doc:0",
+          equals: "London Heathrow",
+        },
+      ],
+    );
+    expect(result.choice).toBe(queried ? "airport" : "input");
+  },
+);
+
+test.each([false, true])(
+  "autocomplete only reoffers an unchanged query for an observed empty result: empty=%s",
+  async (empty) => {
+    const state = page();
+    state.actions = [
+      {
+        id: "input",
+        node: 1,
+        ref: "doc:1",
+        popup_owner: "doc:0",
+        kind: "fill",
+        role: "combobox",
+        label: "Where else?",
+        value: "London Heathrow (LHR)",
+        context: empty ? "No matching locations found" : "Searching",
+      },
+      { id: "wait", kind: "wait", label: "Wait" },
+    ];
+    const p = provider(async (request) => {
+      const body = await request.json();
+      expect(Boolean(body.questions.type_text_target)).toBe(empty);
+      expect("WAIT" in body.questions.operation.criteria).toBe(!empty);
+      return Response.json(
+        decisionResponse(
+          body,
+          empty ? "TYPE_TEXT" : "WAIT",
+          empty ? "1" : undefined,
+        ),
+      );
+    });
+
+    servers.push(p.server);
+    const result = await choose(
+      state,
+      "Select London Heathrow (LHR)",
+      [],
+      p.endpoint,
+      false,
+      undefined,
+      [
+        {
+          kind: "value",
+          label: "Where from?",
+          ref: "doc:0",
+          equals: "London Heathrow (LHR)",
+        },
+      ],
+    );
+    expect(result.choice).toBe(empty ? "input" : "wait");
+  },
+);
+
+test.each([
+  {
+    role: "combobox",
+    text: "London Heathrow",
+    goal: "From London Heathrow (LHR) to Lisbon (LIS)",
+    expected: "LHR",
+  },
+  {
+    role: "combobox",
+    text: "London Heathrow (LHR",
+    goal: "From London Heathrow (LHR) to Lisbon (LIS)",
+    expected: "LHR",
+  },
+  {
+    role: "combobox",
+    text: "London",
+    goal: "Compare London (LHR) and London (LGW)",
+    expected: "London",
+  },
+  {
+    role: "combobox",
+    text: "London (LHR)",
+    goal: "Choose London (LGW)",
+    expected: "London (LHR)",
+  },
+  {
+    role: "combobox",
+    text: "London Heathrow (LHR)",
+    goal: "Choose London Heathrow (LHR)",
+    expected: "LHR",
+  },
+  {
+    role: "textbox",
+    text: "London Heathrow (LHR)",
+    goal: "Enter London Heathrow (LHR)",
+    expected: "London Heathrow (LHR)",
+  },
+  {
+    role: "combobox",
+    text: "London Heathrow (LHR)",
+    goal: "Choose London",
+    expected: "London Heathrow (LHR)",
+  },
+  {
+    role: "combobox",
+    text: "Lisbon",
+    goal: "Choose Lisbon",
+    expected: "Lisbon",
+  },
+])(
+  "autocomplete extracts only an explicit search identifier: $role $goal",
+  async ({ role, text, goal, expected }) => {
+    const state = page();
+    const action = { ...state.actions[0]!, role };
+    const p = provider(() => chatResponse({ text }));
+    servers.push(p.server);
+    expect(
+      (await fieldText(fieldContext(goal, action, state, []), p.endpoint)).text,
+    ).toBe(expected);
+  },
+);
+
+test("autocomplete codes must come from the original goal, not a model instruction", async () => {
+  const state = page();
+  const action = { ...state.actions[0]!, role: "combobox" };
+  const p = provider(() => chatResponse({ text: "London Heathrow" }));
+  servers.push(p.server);
+  const context = fieldContext(
+    "Choose London Heathrow (LHR)",
+    action,
+    state,
+    [],
+    "Choose London Heathrow",
+  );
+  expect((await fieldText(context, p.endpoint)).text).toBe("London Heathrow");
+});
+
+test.each([false, true])(
+  "calendar dates select the day then confirm, without editing Return: selected=%s",
+  async (selected) => {
+    const state = page();
+    state.actions = [
+      {
+        id: "departure",
+        kind: "fill",
+        node: 1,
+        role: "textbox",
+        label: "Departure",
+        value: "Sat, Oct 24",
+        popup_owner: "doc:0",
+      },
+      {
+        id: "return",
+        kind: "fill",
+        node: 2,
+        role: "textbox",
+        label: "Return",
+        value: "",
+        popup_owner: "doc:0",
+      },
+      {
+        id: "date",
+        kind: "click",
+        node: 3,
+        role: "gridcell",
+        label: "Saturday, October 24, 2026, departure date.",
+        selected: String(selected),
+        popup_owner: "doc:0",
+      },
+      {
+        id: "done",
+        kind: "click",
+        node: 4,
+        role: "button",
+        label:
+          "Done. Search for one-way flights, departing on October 24, 2026",
+        popup_owner: "doc:0",
+      },
+      {
+        id: "wrong-year",
+        kind: "click",
+        node: 5,
+        role: "gridcell",
+        label: "Sunday, October 24, 2027",
+        popup_owner: "doc:0",
+      },
+    ];
+    const target = selected ? "4" : "3";
+    const p = provider(async (request) => {
+      const body = await request.json();
+      expect(body.questions.type_text_target).toBeUndefined();
+      expect(Object.keys(body.questions.click_target.criteria)).toEqual([
+        target,
+      ]);
+      expect(
+        body.state.elements.map((element: { index: string }) => element.index),
+      ).toEqual([target]);
+      return Response.json(decisionResponse(body, "CLICK", target));
+    });
+    servers.push(p.server);
+    const decision = await choose(
+      state,
+      "Set the departure date",
+      [],
+      p.endpoint,
+      false,
+      undefined,
+      [
+        {
+          kind: "value",
+          label: "Departure",
+          ref: "doc:0",
+          equals: "2026-10-24",
+        },
+      ],
+    );
+    expect(decision.choice).toBe(selected ? "done" : "date");
+  },
+);
+
+test("a date outside the visible calendar offers month navigation instead of the wrong day", async () => {
+  const state = page();
+  state.actions = [
+    {
+      id: "day",
+      node: 1,
+      popup_owner: "doc:0",
+      role: "gridcell",
+      kind: "click",
+      label: "November 3, 2026",
+      selected: "false",
+    },
+    {
+      id: "next",
+      node: 2,
+      popup_owner: "doc:0",
+      role: "button",
+      kind: "click",
+      label: "Next month",
+    },
+    {
+      id: "done",
+      node: 3,
+      popup_owner: "doc:0",
+      role: "button",
+      kind: "click",
+      label: "Done",
+    },
+  ];
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["2"]);
+    return Response.json(decisionResponse(body, "CLICK", "2"));
+  });
+  servers.push(p.server);
+  expect(
+    (
+      await choose(
+        state,
+        "Depart December 3",
+        [],
+        p.endpoint,
+        false,
+        undefined,
+        [
+          {
+            kind: "value",
+            label: "Departure",
+            ref: "doc:0",
+            equals: "2026-12-03",
+          },
+        ],
+      )
+    ).choice,
+  ).toBe("next");
+});
+
+test("an explicit airport identifier selects its observed option instead of the city", async () => {
+  const state = page();
+  state.actions = [
+    {
+      id: "input",
+      node: 1,
+      popup_owner: "doc:0",
+      kind: "fill",
+      role: "combobox",
+      label: "Where to?",
+      value: "Lisbon",
+    },
+    {
+      id: "city",
+      node: 2,
+      popup_owner: "doc:0",
+      kind: "click",
+      role: "option",
+      label: "Lisbon, Portugal",
+    },
+    {
+      id: "airport",
+      node: 3,
+      popup_owner: "doc:0",
+      kind: "click",
+      role: "option",
+      label: "Humberto Delgado Airport (LIS)",
+    },
+    {
+      id: "nearby",
+      node: 4,
+      popup_owner: "doc:0",
+      kind: "click",
+      role: "option",
+      label: "Airport (LISX)",
+    },
+  ];
+  const p = provider(async (request) => {
+    const body = await request.json();
+    expect(Object.keys(body.questions.click_target.criteria)).toEqual(["3"]);
+    return Response.json(decisionResponse(body, "CLICK", "3"));
+  });
+  servers.push(p.server);
+  expect(
+    (
+      await choose(
+        state,
+        "Select Lisbon (LIS)",
+        [],
+        p.endpoint,
+        false,
+        undefined,
+        [
+          {
+            kind: "value",
+            label: "Where to?",
+            ref: "doc:0",
+            equals: "Lisbon (LIS)",
+          },
+        ],
+      )
+    ).choice,
+  ).toBe("airport");
 });

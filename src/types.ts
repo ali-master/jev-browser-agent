@@ -168,6 +168,7 @@ interface ControlCheck {
 export type CompletionCheck =
   | (ControlCheck & { kind: "value"; equals: string })
   | (ControlCheck & { kind: "checked"; equals: boolean })
+  | (ControlCheck & { kind: "expanded"; equals: boolean })
   | (ControlCheck & { kind: "action"; action: "click" })
   | { kind: "title" | "url" | "text"; includes: string };
 export interface TaskStep {
@@ -192,6 +193,7 @@ export interface CompletionReview {
 }
 export interface AgentState {
   goal: string;
+  interpreted_goal?: string;
   page: PageState;
   decision: Decision | null;
   history: HistoryEntry[];

@@ -311,12 +311,17 @@ export function actionSpace(actions: Action[]) {
         ref: action.ref,
         scope: action.scope || undefined,
         context: action.context,
+        href: action.href,
+        form_ref: action.form_ref,
         input_type: action.input_type,
         constraints: action.constraints,
         value: action.kind === "select" ? action.current_value : action.value,
+        value_date: action.value_date,
         checked: action.checked,
         selected: action.selected,
         expanded: action.expanded,
+        has_popup: action.has_popup,
+        popup_owner: action.popup_owner,
         submits_form: action.submits_form,
         operations: [],
       };
@@ -347,35 +352,239 @@ export async function choose(
   allowDone = true,
   observe?: ModelObserver,
   checks?: CompletionCheck[],
+  sinceAction = 0,
 ): Promise<Decision> {
   const { elements, targets, controls } = actionSpace(page.actions);
   const controlChecks = checks?.filter((check) => "label" in check) ?? [];
-  const missingControls: string[] = [];
-  if (controlChecks.length) {
-    const allowed = new Set<string>();
-    for (const check of controlChecks) {
-      const matches = elements.filter(
+  const requiredForms = new Set(
+    elements
+      .filter(
         (element) =>
-          element.label.trim().replace(/\s+/g, " ") ===
-            check.label.trim().replace(/\s+/g, " ") &&
-          (!check.ref || element.ref === check.ref) &&
-          (!check.scope ||
-            element.scope?.trim().replace(/\s+/g, " ") ===
-              check.scope.trim().replace(/\s+/g, " ")),
-      );
-      if (!matches.length) missingControls.push(check.label);
-      if (matches.length !== 1) continue;
-      const element = matches[0]!;
+          element.form_ref &&
+          controlChecks.some(
+            (check) =>
+              check.kind === "value" &&
+              (check.ref
+                ? check.ref === element.ref
+                : check.label === element.label),
+          ),
+      )
+      .map((element) => element.form_ref),
+  );
+  const missingControls: string[] = [];
+  if (
+    controlChecks.length ||
+    checks?.some(
+      (check) =>
+        check.kind === "text" ||
+        (check.kind === "url" && check.includes.startsWith("#")),
+    )
+  ) {
+    const allowed = new Set<string>();
+    if (!controlChecks.length)
+      for (const action of Object.values(targets.CLICK ?? {})) {
+        if (!("href" in action) || !action.href) continue;
+        const destination = new URL(action.href);
+        if (
+          destination.hash &&
+          destination.href.split("#")[0] === page.url.split("#")[0] &&
+          checks?.some(
+            (check) =>
+              (check.kind === "text" &&
+                check.includes.trim() === action.label.trim()) ||
+              (check.kind === "url" && check.includes === destination.hash),
+          )
+        )
+          allowed.add(action.id);
+      }
+    for (const check of controlChecks) {
       if (
-        (check.kind === "value" && element.value === check.equals) ||
-        (check.kind === "checked" && element.checked === String(check.equals))
+        check.kind === "action" &&
+        history
+          .slice(sinceAction)
+          .some(
+            (entry) =>
+              entry.kind === "click" &&
+              (check.ref
+                ? entry.ref === check.ref
+                : entry.action.trim() === check.label.trim()) &&
+              (!check.scope || entry.scope === check.scope),
+          )
       )
         continue;
-      const operations: TargetOperation[] =
-        check.kind === "value" ? ["TYPE_TEXT", "SELECT"] : ["CLICK"];
-      for (const operation of operations)
-        for (const [index, action] of Object.entries(targets[operation] ?? {}))
-          if (index.split(":")[0] === element.index) allowed.add(action.id);
+      const matches = elements.filter(
+        (element) =>
+          (check.ref
+            ? element.ref === check.ref
+            : element.label.trim().replace(/\s+/g, " ") ===
+              check.label.trim().replace(/\s+/g, " ")) &&
+          (check.kind !== "value" ||
+            element.role === "combobox" ||
+            element.operations.some(
+              (op) => op === "TYPE_TEXT" || op === "SELECT",
+            )) &&
+          (check.kind !== "action" ||
+            !element.operations.some(
+              (op) => op === "TYPE_TEXT" || op === "SELECT",
+            )) &&
+          (!check.scope ||
+            element.scope?.trim().replace(/\s+/g, " ") ===
+              check.scope.trim().replace(/\s+/g, " ")) &&
+          (check.kind !== "action" ||
+            !requiredForms.size ||
+            requiredForms.has(element.form_ref)),
+      );
+      const popup =
+        check.kind === "value" && check.ref
+          ? elements.filter((element) => element.popup_owner === check.ref)
+          : [];
+      let popupElements = popup;
+      let popupOperation: TargetOperation | undefined;
+      // shortcut: English empty-result notices; extend when other locales are supported.
+      const noResults = popup.some((element) =>
+        /\bno (?:matching (?:locations|results|options)|results|matches)(?: found)?\b/i.test(
+          element.context ?? "",
+        ),
+      );
+      if (popup.length) {
+        delete controls.SCROLL_DOWN;
+        delete controls.SCROLL_UP;
+        if (noResults) delete controls.WAIT;
+      }
+      if (popup.length && check.kind === "value") {
+        const words = (text: string) =>
+          text
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}]+/gu, " ")
+            .trim();
+        const options = popup.filter((element) =>
+          ["option", "menuitem", "menuitemradio", "gridcell"].includes(
+            element.role,
+          ),
+        );
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(check.equals)
+          ? new Date(`${check.equals}T12:00:00`).toLocaleDateString("en-US", {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            })
+          : "";
+        const desired = words(date || check.equals);
+        const identifier = check.equals.match(/\(([A-Z0-9]{2,8})\)$/)?.[1];
+        const matching = options.filter((element) =>
+          date
+            ? words(element.label).includes(desired)
+            : identifier
+              ? new RegExp(
+                  `(?<![\\p{L}\\p{N}])${identifier}(?![\\p{L}\\p{N}])`,
+                  "u",
+                ).test(element.label)
+              : words(element.label) === desired ||
+                words(element.label).startsWith(desired + " "),
+        );
+        const editors = popup.filter((element) =>
+          element.operations.includes("TYPE_TEXT"),
+        );
+        const sameLabel = editors.filter(
+          (element) => words(element.label) === words(check.label),
+        );
+        const inputs = sameLabel.length
+          ? sameLabel
+          : editors.length === 1
+            ? editors
+            : [];
+        const queried = inputs.some((element) =>
+          history.some(
+            (entry) =>
+              element.ref &&
+              entry.kind === "fill" &&
+              entry.ref === element.ref &&
+              entry.text === element.value,
+          ),
+        );
+        if (
+          matching.length &&
+          !matching.some((element) => element.selected === "true")
+        ) {
+          popupElements = matching;
+          popupOperation = "CLICK";
+        } else if (matching.some((element) => element.selected === "true")) {
+          popupElements = popup.filter(
+            (element) =>
+              element.role === "button" &&
+              /^(done|apply|confirm|ok)\b/i.test(element.label),
+          );
+          popupOperation = "CLICK";
+        } else if (
+          date &&
+          options.some((element) => element.role === "gridcell")
+        ) {
+          popupElements = popup.filter(
+            (element) =>
+              element.role === "button" &&
+              /^(next|previous|prev|back|forward)\b/i.test(element.label),
+          );
+          popupOperation = "CLICK";
+        } else if (queried && options.length && !date) {
+          popupElements = options;
+          popupOperation = "CLICK";
+        } else if (
+          inputs.length &&
+          !options.some((element) => element.role === "gridcell")
+        ) {
+          popupElements = inputs.filter(
+            (element) => noResults || element.value !== check.equals,
+          );
+          popupOperation = "TYPE_TEXT";
+        } else {
+          popupElements = options.length ? options : popup;
+        }
+      }
+      for (const element of popupElements)
+        for (const operation of popupOperation
+          ? [popupOperation]
+          : element.operations)
+          for (const [index, action] of Object.entries(
+            targets[operation] ?? {},
+          ))
+            if (
+              index.split(":")[0] === element.index &&
+              !(
+                operation === "TYPE_TEXT" &&
+                !noResults &&
+                check.kind === "value" &&
+                element.value === check.equals
+              )
+            )
+              allowed.add(action.id);
+      if (popup.length) continue;
+      if (!matches.length) missingControls.push(check.label);
+      if (!matches.length || (matches.length !== 1 && check.kind !== "action"))
+        continue;
+      for (const element of matches) {
+        if (
+          (check.kind === "value" &&
+            (element.value === check.equals ||
+              element.value_date === check.equals) &&
+            element.expanded !== "true") ||
+          (check.kind === "checked" &&
+            element.checked === String(check.equals)) ||
+          (check.kind === "expanded" &&
+            element.expanded === String(check.equals))
+        )
+          continue;
+        const operations: TargetOperation[] =
+          check.kind === "value"
+            ? element.has_popup && element.expanded !== "true"
+              ? ["CLICK"]
+              : ["TYPE_TEXT", "SELECT", "CLICK"]
+            : ["CLICK"];
+        for (const operation of operations)
+          for (const [index, action] of Object.entries(
+            targets[operation] ?? {},
+          ))
+            if (index.split(":")[0] === element.index) allowed.add(action.id);
+      }
     }
     for (const operation of Object.keys(targets) as TargetOperation[]) {
       const candidates = Object.fromEntries(
@@ -394,6 +603,19 @@ export async function choose(
       "Enter or replace text in an editable field. A small LLM supplies the value from the goal.",
     SELECT: "Select an observed dropdown value.",
   };
+  if (page.readiness === "loading")
+    for (const operation of Object.keys(targets) as TargetOperation[]) {
+      const native = Object.fromEntries(
+        Object.entries(targets[operation]!).filter(
+          ([, action]) =>
+            operation === "CLICK" &&
+            "native_navigation" in action &&
+            action.native_navigation,
+        ),
+      );
+      if (Object.keys(native).length) targets[operation] = native;
+      else delete targets[operation];
+    }
   const operations: Record<string, string> = {};
   for (const operation of Object.keys(targets) as TargetOperation[])
     operations[operation] = labels[operation];
@@ -415,17 +637,44 @@ export async function choose(
   }
   if (allowDone) operations.DONE = "Every requirement is visibly satisfied.";
   operations.BLOCKED = "No supported operation can progress.";
+  const requiredFragment = checks?.find(
+    (check) =>
+      check.kind === "url" &&
+      check.includes.startsWith("#") &&
+      new URL(page.url).hash !== check.includes,
+  );
+  if (
+    requiredFragment?.kind === "url" &&
+    Object.values(targets.CLICK ?? {}).some(
+      (action) =>
+        "href" in action &&
+        action.href &&
+        new URL(action.href).hash === requiredFragment.includes,
+    )
+  ) {
+    delete operations.SCROLL_DOWN;
+    delete operations.SCROLL_UP;
+  }
   const instructions =
     (allowDone
       ? `User goal: ${goal}\n${NEXT_ACTION}`
       : `Current step: ${goal}\n${CURRENT_STEP}`) +
     (missingControls.length && (controls.SCROLL_DOWN || controls.SCROLL_UP)
       ? "\nThe required control is not yet visible. Scrolling is available and must be tried before declaring this control unavailable."
+      : "") +
+    (requiredFragment?.kind === "url"
+      ? `\nThis step requires URL fragment ${requiredFragment.includes}. Click its observed section link when offered; scrolling alone cannot change the URL fragment.`
       : "");
+  const offered = new Set(
+    Object.values(targets).flatMap((group) =>
+      Object.keys(group).map((index) => index.split(":")[0]),
+    ),
+  );
   const request: DecisionRequest = {
     model: endpoint.model,
     state: {
       page: { url: page.url, title: page.title, text: page.text },
+      required_checks: checks,
       observation: {
         readiness: page.readiness ?? "ready",
         omitted_actions: page.omitted_actions,
@@ -435,7 +684,17 @@ export async function choose(
         scroll: { ...page.scroll, viewport_height: page.h },
         pending_controls_not_visible: missingControls,
       },
-      elements,
+      elements: controlChecks.length
+        ? elements.filter(
+            (element) =>
+              offered.has(element.index) ||
+              controlChecks.some((check) =>
+                check.ref
+                  ? check.ref === element.ref
+                  : check.label.trim() === element.label.trim(),
+              ),
+          )
+        : elements,
       recent_actions: history
         .slice(-10)
         .map(({ action, kind, text, page_changed }) => ({
@@ -529,10 +788,12 @@ export function fieldContext(
   action: Action,
   page: PageState,
   history: HistoryEntry[],
+  originalGoal = goal,
 ) {
   if (!("node" in action)) throw new Error("Text requires an observed field.");
   return {
     goal,
+    original_goal: originalGoal,
     field: {
       node: action.node,
       ref: action.ref ?? `${page.document_id}:${action.node}`,
@@ -556,6 +817,24 @@ export function fieldContext(
       .slice(-6)
       .map(({ action, text }) => ({ action, text })),
   };
+}
+
+export function goalIdentifier(
+  value: string,
+  goal: string,
+): string | undefined {
+  const pair = value.match(/^(.+?)\s+\(([A-Z0-9]{2,8})\)?$/);
+  const name = pair?.[1] ?? value.trim();
+  const matches = goal.matchAll(
+    new RegExp(
+      `(?<![\\p{L}\\p{N}_])${RegExp.escape(name)}\\s+\\(([A-Z0-9]{2,8})\\)(?![\\p{L}\\p{N}_])`,
+      "gu",
+    ),
+  );
+  const codes = [...new Set(Array.from(matches, (match) => match[1]!))];
+  return codes.length === 1 && (!pair || pair[2] === codes[0])
+    ? codes[0]
+    : undefined;
 }
 
 export async function fieldText(
@@ -629,7 +908,11 @@ export async function fieldText(
     )
       continue;
     return {
-      text: output.text,
+      // Search by an explicit code without treating the query as a committed selection.
+      text:
+        context.field.role === "combobox" && typeof output.text === "string"
+          ? (goalIdentifier(output.text, context.original_goal) ?? output.text)
+          : output.text,
       helper: {
         model: endpoint.model,
         latency_ms: Math.round(performance.now() - started),
