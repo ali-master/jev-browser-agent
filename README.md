@@ -73,7 +73,7 @@ cp .env.example .env
 bun start
 ```
 
-Open **[127.0.0.1:8766](http://127.0.0.1:8766)**, expand **Model settings**, save both connections and use **Check saved connections**. This sends small real requests to test typed choices and structured chat output, including `null`. It checks protocol readiness, not task-solving ability. Choose **Travel planner**, then **Start task**:
+Open **[127.0.0.1:8766](http://127.0.0.1:8766)**, expand **Agent settings**, save both connections and use **Check saved connections**. This sends small real requests to test typed choices and structured chat output, including `null`. It checks protocol readiness, not task-solving ability. Choose **Travel planner**, then **Start task**:
 
 > Find a Design stay in Lisbon with Free cancellation and open Casa Flora.
 
@@ -121,7 +121,7 @@ Chromium runs in its own isolated context. No Python, `uv`, or Browser Harness i
 
 Both models are needed for every task, including tasks that do not type. A regular chat model cannot replace a System One decision model. The two connections can share an LM Studio server or use separate local and cloud providers.
 
-Configure them in **Model settings** or edit `.env`:
+Configure them in **Agent settings** or edit `.env`:
 
 ```dotenv
 TYPESAFE_BASE_URL=http://127.0.0.1:1234/v1
@@ -153,7 +153,7 @@ For Clef and D1 Omni, the entire decision prompt must fit in the physical batch.
 
 API compatibility is separate from planning quality. A chat model can return valid JSON while choosing the wrong field or omitting part of the goal. Review its generated checklist and use the bundled demo to evaluate a model before giving it a larger task.
 
-If the inspector reports **“Chat helper could not produce a verifiable checklist”**, it rejected the plan and its bounded repair attempts. A repeated validation failure stops after two calls; fixing one error and exposing another allows a third call. The message includes the last validation failure, such as an empty field value, a mismatched control reference, invalid JSON or an output token limit. No action is executed for that rejected plan. Check the **Chat helper** model in **Model settings**: **Test connection** checks API compatibility, not the model's ability to plan a task. A model that repeatedly returns incorrect checks needs to be replaced with a more capable chat model; increasing the decision model's physical batch size does not correct those checks.
+If the inspector reports **“Chat helper could not produce a verifiable checklist”**, it rejected the plan and its bounded repair attempts. A repeated validation failure stops after two calls; fixing one error and exposing another allows a third call. The message includes the last validation failure, such as an empty field value, a mismatched control reference, invalid JSON or an output token limit. No action is executed for that rejected plan. Check the **Chat helper** model in **Agent settings**: **Test connection** checks API compatibility, not the model's ability to plan a task. A model that repeatedly returns incorrect checks needs to be replaced with a more capable chat model; increasing the decision model's physical batch size does not correct those checks.
 
 </details>
 
@@ -236,6 +236,40 @@ The same flags work with `jev serve`; tasks started in the inspector emit their 
 
 `--color auto|always|never` defaults to `auto`. Auto detects a terminal and respects `NO_COLOR`, `FORCE_COLOR`, and `TERM=dumb`; an explicit flag wins. Logs include page changes, model latency, decisions, executed actions, checkpoint progress, stop reasons, and total model versus remaining elapsed time. Raw prompts, field values, API keys and URL queries are not included by the reporter. Debug adds usage and timing summaries; trace adds token counts. Page labels and error messages can still contain site content, so treat saved logs as private.
 
+## Page filters
+
+Expand **Agent settings** in the inspector to enable **Block ad requests**, add **Blocked URLs**, or choose CSS selectors under **Remove elements**. All three are off or empty by default. Saved filters live in `.jev/settings.json` alongside the model connections and are used by the inspector, CLI and library. Changes apply to the **next task**; an active run keeps the filters it started with.
+
+Library callers can supply `filters` in the third argument to `Agent.create` or the second argument to `Browser.create`:
+
+```ts
+import { Agent } from "@usex/jev-browser-agent";
+
+await using agent = await Agent.create(
+  "https://example.com/catalog",
+  "Compare two products and report their prices.",
+  {
+    filters: {
+      blockAds: true,
+      blockedUrls: ["*://ads.example.com/*", "https://example.com/checkout*"],
+      removeSelectors: [".advertisement", "aside.sponsored", "video"],
+    },
+  },
+);
+
+for await (const state of agent.run()) {
+  console.log(state.status, state.page.url);
+}
+```
+
+An explicit `filters: {}` disables saved filters for that run. A supplied `filters` object replaces the saved filter configuration rather than merging it.
+
+- **Ad requests:** uses [Ghostery's filtering engine](https://github.com/ghostery/adblocker) with [EasyList](https://easylist.to/). The list downloads on first use and is reused in memory for that process. An unavailable list stops startup with an actionable error; it does not silently run without blocking. No browsing content is sent to the list provider. Only network rules are used; cosmetic rules and scriptlet injection are disabled.
+- **Blocked URLs:** absolute HTTP(S) [URLPattern](https://developer.mozilla.org/en-US/docs/Web/API/URLPattern) strings such as `*://ads.example.com/*`. Matching is separated by URL component: a blocked host mentioned inside an unrelated URL's query does not block that unrelated URL. Every matching HTTP request and redirect in the controlled tab is stopped before delivery; matching links are also removed from the Agent's choices. A blocked starting URL is rejected before Chromium opens.
+- **Remove elements:** tag names and CSS selectors, one per line. Matching elements are removed from the main document immediately before every observation, including after navigation and dynamic updates. The document's `html`, `head`, and `body` roots are retained. Removing scripts does not undo executed code or prevent their earlier downloads; use network rules to prevent requests.
+
+Filtering applies to the Agent's controlled tab, not other browser windows. It is not a network firewall. Service workers are disabled in the isolated context while network filtering is enabled. Page cleanup does not traverse frames or shadow roots. Removing forms or required scripts can break a task; choose selectors that preserve the content and controls it needs.
+
 ## Why it moves
 
 - **Ask only necessary questions.** One request chooses the operation and any ambiguous target. A single compatible target needs no separate model question; freshness and execution checks still apply.
@@ -280,7 +314,7 @@ The inspector's **Model usage** panel, CLI summary, `agent.snapshot().usage`, an
 
 Usage accepts `prompt_tokens` / `completion_tokens` and `input_tokens` / `output_tokens`. Totals show the reported token subtotal and the number of requests with missing or invalid usage. A provider that returns only `total_tokens` cannot supply a reliable input/output breakdown.
 
-Enter optional input and output prices in **Model settings**, in **USD per million tokens**. Library connections accept the same optional field:
+Enter optional input and output prices in **Agent settings**, in **USD per million tokens**. Library connections accept the same optional field:
 
 ```ts
 pricing: { inputUsdPerMillion: 0.5, outputUsdPerMillion: 1.5 }
@@ -289,21 +323,6 @@ pricing: { inputUsdPerMillion: 0.5, outputUsdPerMillion: 1.5 }
 These numbers are an example, not provider prices. Each request captures its configured rates. A request with 1,000 reported input tokens and 100 output tokens at those example rates estimates `(1000 × 0.5 + 100 × 1.5) / 1_000_000 = $0.00065`. Changing the model or Base URL clears inherited rates unless replacement rates are supplied. Leave both prices blank for **unknown**; enter explicit zeroes only when that is the intended rate.
 
 `estimated_cost_usd` is the **priced subtotal**. Any nonzero `unknown_cost_requests` means the full run cost is unknown. Missing usage is never treated as free, including failed attempts. This is an estimate at your supplied rates, not an invoice: provider caching discounts, additional charges, taxes and local hardware costs are excluded.
-
-## Small enough to read
-
-| File                                                | Job                                                           |
-| --------------------------------------------------- | ------------------------------------------------------------- |
-| [agent.ts](src/agent.ts)                            | Async decision loop, checkpoints, budgets and history         |
-| [memory.ts](src/memory.ts)                          | Bounded page memory and observation-scoped action feedback    |
-| [model.ts](src/model.ts)                            | Typed action space, compatible targets and field text         |
-| [plan.ts](src/plan.ts)                              | Checklist schema, completion evidence and regression checks   |
-| [snapshot.js](src/snapshot.js)                      | Atomic DOM observation, indexed controls and freshness guards |
-| [browser.ts](src/browser.ts)                        | Playwright/CDP connection, input and browser frames           |
-| [config.ts](src/config.ts)                          | Reloadable connections and private settings storage           |
-| [usage.ts](src/usage.ts)                            | Reported tokens, physical requests and configured-rate costs  |
-| [server.ts](src/server.ts) / [static/](src/static/) | Local inspector, live progress and activity review            |
-| [cli.ts](src/cli.ts)                                | Inspector and headless/headed commands                        |
 
 ## Evidence and limits
 
