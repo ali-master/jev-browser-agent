@@ -253,6 +253,31 @@ Only a run that passes the final goal review saves a recipe, in `.jev/workflows/
 
 Recipes contain instructions and typed values, so keep them private. This is conservative reuse, not generalization to a changed website; dynamic content can cause a safe cache miss. Library callers can set `workflow.directory`.
 
+## Model evaluation
+
+The inspector's **Model lab** runs three local scenarios in fresh browser contexts, with 1–5 repetitions. Name the current model pair, run it, then change model settings and run again. The last eight reports remain available during the server session. Export them as JSON before restarting.
+
+Passing requires both Agent completion and independent, caller-authored final-page assertions. A model saying “done” cannot pass a failed assertion. Reports include the failure stage, action count, wall/model time, reported tokens, estimated cost when configured, and p50/p95 across all runs. Unknown token usage and pricing remain explicitly unknown; these are measurements of your runs, not universal model rankings.
+
+For custom cases, save a JSON array:
+
+```json
+[{
+  "id": "article",
+  "url": "https://en.wikipedia.org/wiki/Main_Page",
+  "goal": "Find and open the article about Ada Lovelace.",
+  "assertions": [{"kind": "title", "includes": "Ada Lovelace"}]
+}]
+```
+
+```sh
+jev eval --suite cases.json --label local-pair --repeat 3 --report results.json
+```
+
+Assertions support `title`, `url`, `text` with `includes`, or `value`, `checked`, `expanded` with a control `label` and `equals`. Supply expectations yourself; weak assertions make weak evaluations. Reports exclude raw pages and prompts. Do not place credentials in case IDs or labels.
+
+For multiple configurations in one run, use `evaluateSuite(cases, [{ name: "small", settings: smallSettingsReader }, { name: "large", settings: largeSettingsReader }], { repeat: 3 })` from `@usex/jev-browser-agent`. Runs are sequential, isolated and use the normal Agent path, without saved login profiles or workflow replay. Stop closes the active browser immediately; an in-flight model request can still take its configured timeout to settle.
+
 ## Structured results
 
 Pass `outputSchema` to `Agent.create` to extract typed data after the goal review:

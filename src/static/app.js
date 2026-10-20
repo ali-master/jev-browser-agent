@@ -584,6 +584,7 @@ $("task-result").addEventListener("click", (event) => {
 
 function render() {
   if (!state) return;
+  renderEvaluation();
   $("vision-status").textContent = state.vision
     ? `Visual fallback · ${state.vision.attempts} attempts${state.vision.error ? ` · ${state.vision.error}` : ""}`
     : "";
@@ -673,6 +674,81 @@ function render() {
   controls();
   renderTime();
 }
+function renderEvaluation() {
+  const lab = state.evaluation;
+  if (!lab) return;
+  $("evaluation-start").disabled = busy || state.server_busy;
+  $("evaluation-stop").disabled = !lab.running || lab.stopping;
+  $("evaluation-download").disabled = !lab.reports.length;
+  $("evaluation-status").textContent =
+    lab.error ||
+    (lab.stopping
+      ? "Stopping · browser closed; waiting for the current model request."
+      : lab.running
+        ? lab.current
+        : lab.results.length
+          ? "Evaluation finished."
+          : "No evaluation yet.");
+  const rows = (id, values) => {
+    $(id).replaceChildren(
+      ...values.map((row) => {
+        const tr = document.createElement("tr");
+        for (const value of row) {
+          const td = document.createElement("td");
+          td.textContent = value;
+          tr.append(td);
+        }
+        return tr;
+      }),
+    );
+  };
+  rows(
+    "evaluation-summary",
+    lab.reports.flatMap((report) =>
+      report.summary.map((row) => [
+        row.variant,
+        `${row.passed} / ${row.runs} · ${percent(row.success_rate)}`,
+        `${seconds(row.p50_ms)} / ${seconds(row.p95_ms)}${report.cancelled ? " · cancelled" : ""}`,
+      ]),
+    ),
+  );
+  rows(
+    "evaluation-results",
+    lab.results.map((row) => [
+      `${row.case} · ${row.repeat}`,
+      row.passed ? "Passed" : `Failed · ${row.failure_stage}`,
+      `${seconds(row.wall_ms)} / ${seconds(row.model_ms)}`,
+      `${row.usage.total.input_tokens} / ${row.usage.total.output_tokens}${row.usage.total.unknown_usage_requests ? " · partial" : ""}`,
+      row.reason || `${row.actions} actions · independent assertions passed`,
+    ]),
+  );
+}
+$("evaluation-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  perform(
+    () =>
+      call("evaluate", {
+        label: $("evaluation-label").value,
+        repeat: Number($("evaluation-repeat").value),
+      }),
+    "Starting model evaluation…",
+  );
+});
+$("evaluation-stop").addEventListener("click", () => {
+  perform(() => call("evaluate/stop"), "Stopping evaluation…");
+});
+$("evaluation-download").addEventListener("click", () => {
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(state.evaluation.reports, null, 2)], {
+      type: "application/json",
+    }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "jev-evaluations.json";
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
 function renderTime() {
   $("phase-time").textContent = state?.activity
     ? `${seconds(Date.now() - state.activity.started_at)} in this stage`

@@ -564,6 +564,73 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
           </p>
         </div>
       </section>
+      <details id="model-lab">
+        <summary>Model lab · compare reliability and speed</summary>
+        <p class="muted">
+          Run the travel, crowded and reading fixtures in fresh browsers using
+          your current model settings. Passing requires both the agent's goal
+          review and independent final-page assertions. Reports stay in this
+          server session; change models and run again to compare.
+        </p>
+        <form id="evaluation-form" class="lab-controls">
+          <label
+            >Model pair label
+            <input
+              id="evaluation-label"
+              value="Current models"
+              maxlength="120"
+              required
+          /></label>
+          <label
+            >Repetitions
+            <input
+              id="evaluation-repeat"
+              type="number"
+              min="1"
+              max="5"
+              value="1"
+              required
+          /></label>
+          <button id="evaluation-start" type="submit">Run evaluation</button>
+          <button id="evaluation-stop" type="button" disabled>Stop</button>
+          <button id="evaluation-download" type="button" disabled>
+            Export reports ↓
+          </button>
+        </form>
+        <p id="evaluation-status" role="status" aria-live="polite">
+          No evaluation yet.
+        </p>
+        <div class="lab-table">
+          <table class="usage-table">
+            <caption>
+              Completed comparisons · p50 and p95 include failed runs
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Model pair</th>
+                <th scope="col">Passed</th>
+                <th scope="col">p50 / p95 time</th>
+              </tr>
+            </thead>
+            <tbody id="evaluation-summary"></tbody>
+          </table>
+          <table class="usage-table">
+            <caption>
+              Latest run · reported tokens may be incomplete
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Case / run</th>
+                <th scope="col">Result</th>
+                <th scope="col">Wall / model time</th>
+                <th scope="col">Input / output tokens</th>
+                <th scope="col">Diagnosis</th>
+              </tr>
+            </thead>
+            <tbody id="evaluation-results"></tbody>
+          </table>
+        </div>
+      </details>
       <details id="run-usage">
         <summary>
           Model usage <span id="usage-summary">No requests yet</span>

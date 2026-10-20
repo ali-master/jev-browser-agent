@@ -2,6 +2,12 @@ import { Agent } from "./agent";
 import { workflowOptions } from "./workflow";
 import { outputCSV, validateSchema } from "./output";
 import { ProfileStore, SecretVault } from "./credentials";
+import {
+  evaluateSuite,
+  inspectorEvaluationCases,
+  type EvaluationReport,
+  type EvaluationResult,
+} from "./evaluation";
 import { Browser, StalePage } from "./browser";
 import type { AgentPointer } from "./browser";
 import { SettingsStore, object } from "./config";
@@ -47,6 +53,23 @@ export function startServer(
   let textModel = "Not configured";
   let liveAvailable = false;
   let lastError: string | null = null;
+  const evaluation: {
+    running: boolean;
+    stopping: boolean;
+    current: string;
+    error: string | null;
+    results: EvaluationResult[];
+    reports: EvaluationReport[];
+  } = {
+    running: false,
+    stopping: false,
+    current: "",
+    error: null,
+    results: [],
+    reports: [],
+  };
+  let evaluationAbort: AbortController | undefined;
+  let evaluationTask: Promise<void> | undefined;
   let latestPointer: (AgentPointer & { run_id: string }) | null = null;
   let latestFrame: {
     image: string;
@@ -81,7 +104,8 @@ export function startServer(
     max_steps: agent?.maxSteps ?? MAX_STEPS,
     revision,
     run_id: runId,
-    server_busy: busy,
+    server_busy: busy || evaluation.running,
+    evaluation,
     live_available: liveAvailable,
     pointer: latestPointer,
     error: lastError,
@@ -249,10 +273,18 @@ export function startServer(
             "/api/predict",
             "/api/act",
             "/api/tick",
+            "/api/evaluate",
+            "/api/evaluate/stop",
           ].includes(path)
         )
           return json({ error: "Not found." }, 404);
-        if (busy || shuttingDown)
+        if (path === "/api/evaluate/stop") {
+          evaluation.stopping = evaluation.running;
+          evaluationAbort?.abort();
+          publishState();
+          return json(snapshot());
+        }
+        if (busy || shuttingDown || evaluation.running)
           return json({ error: "A browser step is already running." }, 409);
         busy = true;
         lastError = null;
@@ -265,6 +297,62 @@ export function startServer(
           }
           if (!object(body))
             return json({ error: "Expected a JSON object." }, 400);
+          if (path === "/api/evaluate") {
+            const repeat = body.repeat ?? 1,
+              label = body.label ?? "Current models";
+            if (
+              !Number.isInteger(repeat) ||
+              Number(repeat) < 1 ||
+              Number(repeat) > 5 ||
+              typeof label !== "string" ||
+              !label.trim() ||
+              label.length > 120
+            )
+              throw new Error(
+                "Use a model label of 1–120 characters and 1–5 repetitions.",
+              );
+            const config = await store.read();
+            if (!config.text.model || !config.decision.model)
+              throw new Error("Configure both models first.");
+            evaluationAbort = new AbortController();
+            Object.assign(evaluation, {
+              running: true,
+              stopping: false,
+              error: null,
+              results: [],
+              current: "Opening",
+            });
+            evaluationTask = evaluateSuite(
+              inspectorEvaluationCases(origin),
+              [{ name: label.trim(), settings: async () => config }],
+              {
+                repeat: Number(repeat),
+                signal: evaluationAbort.signal,
+                onProgress: (p) => {
+                  evaluation.current = `${p.case} · run ${p.repeat} · ${p.stage}`;
+                  publishState();
+                },
+                onResult: (row) => {
+                  evaluation.results.push(row);
+                  publishState();
+                },
+              },
+            )
+              .then((report) => {
+                evaluation.reports.push(report);
+                if (evaluation.reports.length > 8) evaluation.reports.shift();
+              })
+              .catch((error) => {
+                evaluation.error =
+                  error instanceof Error ? error.message : "Evaluation failed.";
+              })
+              .finally(() => {
+                evaluation.running = false;
+                evaluation.stopping = false;
+                publishState();
+              });
+            return json(snapshot(), 202);
+          }
           if (path === "/api/preflight")
             return json({ checks: await checkModels(() => store.read()) });
           if (path === "/api/settings") {
@@ -396,6 +484,7 @@ export function startServer(
     url: `http://127.0.0.1:${server.port}`,
     async close() {
       shuttingDown = true;
+      evaluationAbort?.abort();
       for (const viewer of viewers) {
         try {
           viewer.close();
@@ -407,6 +496,7 @@ export function startServer(
       while (busy && performance.now() < deadline) await Bun.sleep(20);
       if (busy) await agent?.browser.close();
       else await agent?.close();
+      if (evaluationTask) await Promise.race([evaluationTask, Bun.sleep(3000)]);
     },
   };
 }

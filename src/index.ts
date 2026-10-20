@@ -5,6 +5,17 @@ export { outputCSV } from "./output";
 export type { OutputSchema, StructuredOutput } from "./output";
 export type { ProfileOptions, Secrets } from "./credentials";
 export type { VisionOptions } from "./vision";
+export {
+  evaluateSuite,
+  evaluationCases,
+  inspectorEvaluationCases,
+} from "./evaluation";
+export type {
+  EvaluationCase,
+  EvaluationVariant,
+  EvaluationResult,
+  EvaluationReport,
+} from "./evaluation";
 export { Browser, StalePage, fingerprint } from "./browser";
 export type { AgentPointer, BrowserDriver, BrowserOptions } from "./browser";
 export { SettingsStore } from "./config";

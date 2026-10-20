@@ -1594,12 +1594,33 @@ footer {
 .run-options[open] summary {
   margin-bottom: 12px;
 }
-.run-options input,
+.run-options input:not([type="checkbox"]),
 .run-options textarea {
   width: 100%;
 }
 #structured-result {
   margin-top: 24px;
+}
+.lab-controls {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.lab-controls label {
+  display: grid;
+  gap: 6px;
+}
+#evaluation-repeat {
+  width: 80px;
+}
+.lab-table {
+  overflow-x: auto;
+}
+.lab-table td {
+  overflow-wrap: anywhere;
+  max-width: 380px;
 }
 #structured-result pre {
   max-height: 400px;

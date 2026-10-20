@@ -2,6 +2,8 @@
 import { parseArgs } from "node:util";
 import { Agent } from "./agent";
 import { Browser } from "./browser";
+import { evaluateSuite } from "./evaluation";
+import { SettingsStore } from "./config";
 import { startServer } from "./server";
 import { formatUsage } from "./usage";
 import { AgentReporter, Logger, logUrl } from "./logger";
@@ -12,6 +14,7 @@ const help = `Jev Browser Agent (Bun)
   jev                         Open the local inspector (default port 8766)
   jev serve --port 8766        Open the inspector on a selected loopback port
   jev run --url URL --goal "Task" [--headed] [--max-steps 60] [--record DIR]
+  jev eval --suite cases.json [--label local] [--repeat 3] [--report results.json]
 
   --log-level info            error | warn | info | debug | trace
   --log-detail normal         low | normal | high
@@ -57,6 +60,10 @@ try {
       "allow-origin": { type: "string", multiple: true },
       secrets: { type: "string" },
       vision: { type: "boolean" },
+      suite: { type: "string" },
+      label: { type: "string" },
+      repeat: { type: "string" },
+      report: { type: "string" },
     },
   });
   const command = positionals[0] ?? "serve";
@@ -68,10 +75,46 @@ try {
   if (values.help) console.log(help);
   else if (
     positionals.length > 1 ||
-    !["serve", "run", "login"].includes(command)
+    !["serve", "run", "login", "eval"].includes(command)
   )
     throw new Error(help);
-  else if (command === "login") {
+  else if (command === "eval") {
+    if (!values.suite) throw new Error("Evaluation needs --suite cases.json.");
+    const store = new SettingsStore(),
+      controller = new AbortController();
+    const cancel = () => controller.abort();
+    process.on("SIGINT", cancel);
+    process.on("SIGTERM", cancel);
+    try {
+      const report = await evaluateSuite(
+        await Bun.file(values.suite).json(),
+        [{ name: values.label ?? "current", settings: () => store.read() }],
+        {
+          repeat: values.repeat ? Number(values.repeat) : 1,
+          maxSteps: values["max-steps"]
+            ? Number(values["max-steps"])
+            : undefined,
+          signal: controller.signal,
+          onProgress: (progress) =>
+            logger.log("debug", "Evaluation stage", progress),
+          onResult: (result) =>
+            logger.log(
+              result.passed ? "info" : "warn",
+              `${result.case}: ${result.passed ? "passed" : result.failure_stage}`,
+              { actions: result.actions, wall_ms: result.wall_ms },
+            ),
+        },
+      );
+      const output = JSON.stringify(report, null, 2);
+      if (values.report) await Bun.write(values.report, output + "\n");
+      console.log(output);
+      if (report.cancelled || report.results.some((r) => !r.passed))
+        process.exitCode = 1;
+    } finally {
+      process.off("SIGINT", cancel);
+      process.off("SIGTERM", cancel);
+    }
+  } else if (command === "login") {
     if (!values.url || !values.profile)
       throw new Error("Login needs --url and --profile.");
     const browser = await Browser.create(values.url, {
