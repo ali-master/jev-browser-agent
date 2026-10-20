@@ -28,6 +28,15 @@ test("landing examples copy independently and remain usable across themes and na
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(server.url.href);
+    await page.getByRole("link", { name: "Capabilities", exact: true }).click();
+    expect(new URL(page.url()).hash).toBe("#capabilities");
+    expect(
+      await page.evaluate(() =>
+        [...document.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')]
+          .map((link) => link.hash.slice(1))
+          .filter((id) => !document.getElementById(id)),
+      ),
+    ).toEqual([]);
     expect(await page.locator("#scenarios .scenario-grid li").count()).toBe(8);
     const answer = (await page.locator("#answer-example").innerText()).trim();
     await page.locator("[data-copy-target]").click();
@@ -37,6 +46,15 @@ test("landing examples copy independently and remain usable across themes and na
     expect(answer).toContain("[2, 4, 6]");
     expect(answer).toContain("[2, 3]");
 
+    await page.getByRole("tab", { name: "03 Run" }).click();
+    const example = await page.locator("#panel-run pre code").innerText();
+    await page.getByRole("button", { name: "Copy agent example" }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      example,
+    );
+    expect(() =>
+      new Bun.Transpiler({ loader: "ts" }).transformSync(example),
+    ).not.toThrow();
     await page.getByRole("tab", { name: "04 CLI" }).click();
     const commands = await page.locator("#panel-cli pre code").innerText();
     await page.locator(".code-window [data-copy]").click();

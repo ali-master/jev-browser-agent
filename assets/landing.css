@@ -482,10 +482,14 @@ nav a:hover {
   letter-spacing: 1px;
 }
 .hero-note .tiny-label {
+  flex-shrink: 0;
   padding: 4px 7px;
   border: 1px solid var(--line);
   border-radius: 4px;
   font-size: 8px;
+}
+.hero-note:hover {
+  color: var(--orange-ink);
 }
 .demo {
   position: relative;
@@ -1100,6 +1104,160 @@ nav a:hover {
 .verified-detail .icon {
   width: 16px;
   height: 16px;
+}
+.capabilities {
+  padding-bottom: 100px;
+}
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 48px;
+}
+.capability-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.capability-featured {
+  grid-column: span 2;
+  padding: 32px;
+}
+.capability-card > .tiny-label {
+  color: var(--orange-ink);
+}
+.capability-card h3 {
+  font-size: 23px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.8px;
+  margin-block: 20px 14px;
+}
+.capability-featured h3 {
+  max-width: 360px;
+  font-size: 32px;
+  letter-spacing: -1.2px;
+}
+.capability-card p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+  margin-bottom: 26px;
+}
+.capability-card > .text-link {
+  margin-top: auto;
+  font-size: 11px;
+}
+.capability-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding-block: 16px;
+  margin-bottom: 26px;
+  border-block: 1px solid var(--line);
+  color: var(--muted);
+  font: 10px/1.8 var(--mono);
+}
+.capability-flow strong {
+  color: var(--success);
+  font-weight: 500;
+}
+.capability-flow .icon {
+  width: 14px;
+  height: 14px;
+}
+.lab-spotlight {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 64px;
+  margin-top: 16px;
+  padding: 40px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--orange-soft);
+}
+.lab-spotlight .eyebrow {
+  color: var(--orange-ink);
+}
+.lab-spotlight h3 {
+  margin-block: 18px;
+  font-size: clamp(32px, 3.5vw, 46px);
+  font-weight: 500;
+  letter-spacing: -1.8px;
+  line-height: 1.08;
+}
+.lab-spotlight p:not(.eyebrow) {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+.lab-spotlight .text-link {
+  margin-top: 24px;
+}
+.lab-scorecard {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.lab-scorecard > .tiny-label {
+  color: var(--muted);
+}
+.lab-scorecard dl {
+  margin: 16px 0;
+}
+.lab-scorecard dl > div {
+  padding-block: 14px;
+  border-top: 1px solid var(--line);
+}
+.lab-scorecard dt {
+  color: var(--orange-ink);
+  font: 10px var(--mono);
+}
+.lab-scorecard dd {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.lab-scorecard p:not(.eyebrow) {
+  font-size: 11px;
+}
+@media (max-width: 1100px) {
+  .capability-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .capability-featured {
+    grid-column: auto;
+  }
+  .lab-spotlight {
+    gap: 28px;
+    padding: 28px;
+  }
+}
+@media (max-width: 760px) {
+  .capabilities {
+    padding-bottom: 60px;
+  }
+  .capability-grid,
+  .lab-spotlight {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .capability-card,
+  .lab-spotlight {
+    padding: 24px;
+  }
+  .lab-scorecard {
+    padding: 18px;
+  }
 }
 .clarity {
   background: var(--deep-paper);

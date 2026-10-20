@@ -7,12 +7,12 @@
     <meta name="author" content="Ali Torki" />
     <meta
       name="description"
-      content="Jev is a browser agent for multi-step browsing and research. Block ads and unwanted URLs, clean up pages, and follow every action to a sourced answer."
+      content="A Bun browser agent with reusable workflows, structured results with field evidence, scoped secrets, and a model comparison lab. Your models. Every move in view."
     />
     <meta property="og:title" content="Jev — A browser that chooses." />
     <meta
       property="og:description"
-      content="Your goal. Your models. Your page filters. Block ad requests, choose where the agent can go, and bring back answers grounded in observed pages."
+      content="Browse with context. Reuse verified actions. Bring back structured data with sources, and compare your models in Model lab. Local or cloud, you're in control."
     />
     <meta property="og:image" content="./social-preview.png" />
     <meta property="og:type" content="website" />
@@ -30,7 +30,7 @@
         <span>Jev<span class="brand-descriptor">Browser Agent</span></span>
       </a>
       <nav aria-label="Main navigation">
-        <a href="#idea">The idea</a>
+        <a href="#capabilities">Capabilities</a>
         <a href="#results">The result</a>
         <a href="#build">For developers</a>
         <a
@@ -50,8 +50,8 @@
           </p>
           <h1 id="hero-title">A browser<br />that <em>chooses.</em></h1>
           <p class="hero-description">
-            A little intention. A clear next move.<br />Give Jev a goal, and
-            watch it browse, read, and bring back an answer you can inspect.
+            Give Jev a goal. Watch it work.<br />Bring back sourced answers,
+            structured data, and verified workflows you can run again.
           </p>
           <div class="hero-actions">
             <a class="button button-dark" href="#build"
@@ -62,10 +62,11 @@
               ><i class="icon play" aria-hidden="true"></i> See it in motion</a
             >
           </div>
-          <div class="hero-note">
-            <span class="tiny-label">MADE OF</span> Typed decisions. Observable
-            actions.
-          </div>
+          <a class="hero-note" href="#capabilities">
+            <span class="tiny-label">NEW IN JEV</span> Reusable workflows.
+            Sourced data. Model lab.
+            <i class="icon arrow-right" aria-hidden="true"></i>
+          </a>
         </div>
 
         <figure
@@ -342,16 +343,184 @@
         </div>
       </section>
 
+      <section
+        class="capabilities section-width"
+        id="capabilities"
+        aria-labelledby="capabilities-title"
+      >
+        <div class="section-intro reveal">
+          <p class="eyebrow">02 — BUILT FOR THE NEXT RUN</p>
+          <h2 id="capabilities-title">
+            Good work.<br /><span class="muted">Worth building on.</span>
+          </h2>
+          <p>
+            Keep context as you browse. Reuse what worked. Bring back data you
+            can put to work, with the evidence that came with it.
+          </p>
+        </div>
+        <div class="capability-grid">
+          <article class="capability-card capability-featured reveal">
+            <span class="tiny-label">REUSABLE WORKFLOWS</span>
+            <h3>A good run deserves an encore.</h3>
+            <p>
+              Give a task a name and its own parameters. Successful, reviewed
+              runs save a local recipe. Matching pages and steps can reuse
+              actions; changed conditions return to fresh decisions.
+            </p>
+            <div class="capability-flow" aria-label="Workflow lifecycle">
+              <span>Plan</span>
+              <i class="icon arrow-right" aria-hidden="true"></i>
+              <strong>Reuse matching actions</strong>
+              <i class="icon arrow-right" aria-hidden="true"></i>
+              <span>Verify</span>
+            </div>
+            <a
+              class="text-link"
+              href="https://github.com/ali-master/jev-browser-agent#reusable-workflows"
+              >Make the next run count
+              <i class="icon arrow-up-right" aria-hidden="true"></i>
+            </a>
+          </article>
+          <article class="capability-card capability-featured reveal">
+            <span class="tiny-label">STRUCTURED RESULTS</span>
+            <h3>Your schema. A source for every field.</h3>
+            <p>
+              Define the JSON you need. Jev validates the result against your
+              schema and attaches a source URL, observed quote and source hash
+              to every leaf value. Copy JSON, or export flat data as CSV.
+            </p>
+            <div
+              class="capability-flow"
+              aria-label="Structured result contents"
+            >
+              <strong>{ data }</strong>
+              <span>+ field evidence</span>
+              <i class="icon arrow-right" aria-hidden="true"></i>
+              <span>JSON / CSV</span>
+            </div>
+            <a
+              class="text-link"
+              href="https://github.com/ali-master/jev-browser-agent#structured-results"
+              >Build with the result
+              <i class="icon arrow-up-right" aria-hidden="true"></i>
+            </a>
+          </article>
+          <article class="capability-card reveal">
+            <span class="tiny-label">FRAMES, TABS &amp; RUN MEMORY</span>
+            <h3>Keep the thread.</h3>
+            <p>
+              Follow child frames, tabs in the agent's browser and open Shadow
+              DOM controls. Carry visited-page context and feedback from
+              ineffective actions through the run.
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/ali-master/jev-browser-agent#frames-tabs-and-panels"
+              >Go beyond one page
+              <i class="icon arrow-up-right" aria-hidden="true"></i>
+            </a>
+          </article>
+          <article class="capability-card reveal">
+            <span class="tiny-label">LOGIN PROFILES &amp; SECRETS</span>
+            <h3>Access, on your terms.</h3>
+            <p>
+              Reopen an encrypted login profile. Bind a private value to one
+              exact site and field using a masked form and a goal placeholder.
+              Runs with secrets disable screenshots and workflow replay.
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/ali-master/jev-browser-agent#login-profiles-and-secrets"
+              >Set the boundaries
+              <i class="icon arrow-up-right" aria-hidden="true"></i>
+            </a>
+          </article>
+          <article class="capability-card reveal">
+            <span class="tiny-label">VISUAL FALLBACK · OPT-IN</span>
+            <h3>A way into canvas.</h3>
+            <p>
+              An image-capable helper can propose a stable canvas target when
+              DOM actions fall short. The typed decision still chooses, and the
+              browser rechecks the target before clicking.
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/ali-master/jev-browser-agent#optional-visual-fallback"
+              >See where vision fits
+              <i class="icon arrow-up-right" aria-hidden="true"></i>
+            </a>
+          </article>
+          <article class="capability-card reveal">
+            <span class="tiny-label">WEBMCP · EXPERIMENTAL</span>
+            <h3>Use the page's own tools.</h3>
+            <p>
+              Allow native page tools by exact origin and name. Arguments are
+              validated before invocation; page checks still govern completion.
+              Requires Chromium with WebMCP support.
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/ali-master/jev-browser-agent#webmcp-tools-alongside-dom-actions"
+              >Connect allowed tools
+              <i class="icon arrow-up-right" aria-hidden="true"></i>
+            </a>
+          </article>
+        </div>
+        <article class="lab-spotlight reveal" aria-labelledby="lab-title">
+          <div>
+            <p class="eyebrow">MODEL LAB</p>
+            <h3 id="lab-title">Your models.<br />Your measurements.</h3>
+            <p>
+              Compare model pairs on three local scenarios, with up to five
+              repetitions in fresh browsers. Passing needs both the agent's
+              review and independent final-page checks.
+            </p>
+            <a
+              class="text-link"
+              href="https://github.com/ali-master/jev-browser-agent#model-evaluation"
+              >Explore Model lab
+              <i class="icon arrow-up-right" aria-hidden="true"></i>
+            </a>
+          </div>
+          <div class="lab-scorecard">
+            <span class="tiny-label">WHAT YOUR REPORT SHOWS</span>
+            <dl>
+              <div>
+                <dt>Reliability</dt>
+                <dd>Passed checks &amp; failure stages</dd>
+              </div>
+              <div>
+                <dt>Speed</dt>
+                <dd>Wall time, model time, p50 &amp; p95</dd>
+              </div>
+              <div>
+                <dt>Usage</dt>
+                <dd>Reported tokens &amp; priced cost estimates</dd>
+              </div>
+            </dl>
+            <p>
+              Measurements from your runs. Missing usage stays unknown. Export
+              JSON reports before restarting the server.
+            </p>
+          </div>
+        </article>
+      </section>
+
       <section class="clarity" aria-labelledby="clarity-title">
         <div class="section-width clarity-layout">
           <div class="clarity-copy reveal">
-            <p class="eyebrow">02 — A WINDOW INTO THE WORK</p>
+            <p class="eyebrow">03 — A WINDOW INTO THE WORK</p>
             <h2 id="clarity-title">Every move.<br />In the open.</h2>
             <p>
               The useful part of an agent isn't just where it ends up. It's
               being able to follow how it got there. Preview each action, watch
               the optional pointer, and revisit the page after every click or
               scroll.
+            </p>
+            <p>
+              Agent settings and Model lab sit up front. Run options puts
+              profiles, secrets and output schemas within reach, with formatted,
+              highlighted JSON as you edit.
             </p>
             <a
               class="text-link"
@@ -423,7 +592,7 @@
         aria-labelledby="results-title"
       >
         <div class="section-intro reveal">
-          <p class="eyebrow">03 — SOMETHING TO TAKE AWAY</p>
+          <p class="eyebrow">04 — SOMETHING TO TAKE AWAY</p>
           <h2 id="results-title">
             An answer.<br /><span class="muted">With a paper trail.</span>
           </h2>
@@ -534,7 +703,7 @@
         aria-labelledby="filters-title"
       >
         <div class="section-intro reveal">
-          <p class="eyebrow">04 — A LITTLE LESS IN THE WAY</p>
+          <p class="eyebrow">05 — A LITTLE LESS IN THE WAY</p>
           <h2 id="filters-title">
             Less noise.<br /><span class="muted">More room to think.</span>
           </h2>
@@ -626,7 +795,7 @@
         aria-labelledby="scenarios-title"
       >
         <div class="section-intro reveal">
-          <p class="eyebrow">05 — MORE PLACES TO GO</p>
+          <p class="eyebrow">06 — MORE PLACES TO GO</p>
           <h2 id="scenarios-title">
             Start small.<br /><span class="muted">Follow your curiosity.</span>
           </h2>
@@ -764,13 +933,13 @@
         aria-labelledby="build-title"
       >
         <div class="build-copy reveal">
-          <p class="eyebrow">06 — BUILT FOR BUILDERS</p>
+          <p class="eyebrow">07 — BUILT FOR BUILDERS</p>
           <h2 id="build-title">
             A few lines.<br /><span class="muted">A new direction.</span>
           </h2>
           <p>
             Bring a goal and your model connections.<br />Jev brings the loop.
-            Add page filters when your task needs them.
+            Name a workflow, supply its parameters, and inspect the next run.
           </p>
           <a
             class="text-link"
@@ -910,24 +1079,22 @@ TEXT_MODEL_API_KEY=</code></pre>
 
 <span class="syntax-keyword">await using</span> agent = <span class="syntax-keyword">await</span> Agent.create(
   <span class="syntax-string">"https://en.wikipedia.org/wiki/Main_Page"</span>,
-  <span class="syntax-string">"Find and open the article about Lisbon."</span>,
+  <span class="syntax-string">"Find and open the article about {{city}}."</span>,
   {
-    filters: {
-      blockAds: <span class="syntax-keyword">true</span>,
-      blockedUrls: [<span class="syntax-string">"*://ads.example.com/*"</span>],
-      removeSelectors: [<span class="syntax-string">".advertisement"</span>],
+    workflow: {
+      name: <span class="syntax-string">"city-research"</span>,
+      parameters: { city: <span class="syntax-string">"Lisbon"</span> },
     },
   },
 );
 
 <span class="syntax-keyword">for await</span> (<span class="syntax-keyword">const</span> state <span class="syntax-keyword">of</span> agent.run()) {
-  console.log(state.status, state.page.url);
+  console.log(state.status, state.workflow);
 }</code></pre>
             <p class="code-note">
-              Save as agent.ts, then run: <code>bun run agent.ts</code>. Replace
-              the example patterns and selectors for your site. Omit
-              <code>filters</code> to use saved settings, or pass
-              <code>filters: {}</code> to disable them for this run.
+              Save as agent.ts, then run: <code>bun run agent.ts</code>. A
+              recipe saves only after the goal review passes. Later runs can
+              reuse matching actions; planning and final verification still run.
             </p>
           </div>
           <span
