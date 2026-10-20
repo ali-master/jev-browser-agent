@@ -22,6 +22,176 @@ const escape = (value) =>
   );
 const percent = (value) => `${(value * 100).toFixed(value < 0.01 ? 1 : 0)}%`;
 const seconds = (value) => `${(value / 1000).toFixed(1)} s`;
+
+const jsonToken =
+  /"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|[{}[\],:]/g;
+
+/** Format whitespace without rounding numbers, reordering keys or decoding escapes. */
+function prettyJSON(source) {
+  JSON.parse(source);
+  const tokens = [...source.matchAll(jsonToken)].map((match) => match[0]);
+  let result = "",
+    depth = 0;
+  const newline = () => "\n" + "  ".repeat(depth);
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === "{" || token === "[") {
+      result += token;
+      depth++;
+      if (tokens[i + 1] !== "}" && tokens[i + 1] !== "]") result += newline();
+    } else if (token === "}" || token === "]") {
+      depth--;
+      if (tokens[i - 1] !== "{" && tokens[i - 1] !== "[") result += newline();
+      result += token;
+    } else if (token === ",") result += "," + newline();
+    else result += token === ":" ? ": " : token;
+  }
+  return result;
+}
+
+/** Paint JSON as text nodes; pasted markup must never become active HTML. */
+function highlightJSON(source) {
+  const fragment = document.createDocumentFragment();
+  let offset = 0;
+  for (const match of source.matchAll(jsonToken)) {
+    fragment.append(document.createTextNode(source.slice(offset, match.index)));
+    const value = match[0],
+      span = document.createElement("span");
+    const kind =
+      value[0] === '"'
+        ? /^\s*:/.test(source.slice(match.index + value.length))
+          ? "key"
+          : "string"
+        : /^-?\d/.test(value)
+          ? "number"
+          : /^(true|false|null)$/.test(value)
+            ? "literal"
+            : "punctuation";
+    span.className = `json-${kind}`;
+    span.textContent = value;
+    fragment.append(span);
+    offset = match.index + value.length;
+  }
+  fragment.append(document.createTextNode(source.slice(offset) + "\n"));
+  return fragment;
+}
+
+/** Enhance optional JSON fields while retaining native textarea editing and form validation. */
+function enhanceJSONField(input) {
+  const editor = document.createElement("div"),
+    toolbar = document.createElement("div");
+  const badge = document.createElement("span"),
+    format = document.createElement("button");
+  const surface = document.createElement("div"),
+    highlight = document.createElement("pre");
+  const status = document.createElement("span");
+  editor.className = "json-editor";
+  toolbar.className = "json-editor-toolbar";
+  badge.className = "json-editor-badge";
+  badge.textContent = "JSON";
+  format.type = "button";
+  format.className = "json-format";
+  format.textContent = "Format";
+  format.setAttribute("aria-label", `Format ${input.dataset.jsonEditor} JSON`);
+  format.title = "Format JSON · ⌘/Ctrl + Shift + F";
+  surface.className = "json-editor-surface";
+  highlight.className = "json-highlight";
+  highlight.setAttribute("aria-hidden", "true");
+  status.className = "json-editor-status";
+  status.id = `${input.id}-status`;
+  status.setAttribute("role", "status");
+  input.setAttribute(
+    "aria-describedby",
+    [input.getAttribute("aria-describedby"), status.id]
+      .filter(Boolean)
+      .join(" "),
+  );
+  input.setAttribute("aria-keyshortcuts", "Control+Shift+F Meta+Shift+F");
+  input.spellcheck = false;
+  input.autocapitalize = "off";
+  input.wrap = "off";
+  input.dir = "ltr";
+  try {
+    input.placeholder = prettyJSON(input.placeholder);
+  } catch {}
+  input.rows = Math.min(
+    14,
+    Math.max(5, (input.value || input.placeholder).split("\n").length),
+  );
+  input.before(editor);
+  toolbar.append(badge, format);
+  surface.append(highlight, input);
+  editor.append(toolbar, surface, status);
+  const syncScroll = () => {
+    highlight.scrollTop = input.scrollTop;
+    highlight.scrollLeft = input.scrollLeft;
+  };
+  const update = () => {
+    const source = input.value,
+      blank = !source.trim(),
+      large = source.length > 64000;
+    let error = "";
+    if (!blank) {
+      try {
+        JSON.parse(source);
+      } catch (cause) {
+        error = `Invalid JSON: ${cause.message.slice(0, 160)}`;
+      }
+    }
+    input.setCustomValidity(error);
+    input.setAttribute("aria-invalid", String(Boolean(error)));
+    editor.dataset.state = error ? "invalid" : blank ? "empty" : "valid";
+    editor.dataset.highlight = String(!large);
+    editor.dataset.example = String(!source);
+    highlight.replaceChildren(
+      large
+        ? document.createTextNode("")
+        : highlightJSON(source || input.placeholder),
+    );
+    format.disabled = blank || Boolean(error) || large;
+    status.textContent =
+      error ||
+      (large
+        ? "Syntax preview paused above 64 KB."
+        : blank
+          ? source
+            ? "Optional field"
+            : "Example only · optional field"
+          : "Valid JSON");
+    syncScroll();
+  };
+  const prettify = () => {
+    if (format.disabled) return;
+    input.value = prettyJSON(input.value);
+    input.rows = Math.min(18, Math.max(5, input.value.split("\n").length));
+    input.focus();
+    input.setSelectionRange(0, 0);
+    input.scrollTop = input.scrollLeft = 0;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    status.textContent = "Formatted · 2-space indentation";
+  };
+  input.addEventListener("input", update);
+  input.addEventListener("scroll", syncScroll);
+  input.addEventListener("keydown", (event) => {
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      event.shiftKey &&
+      event.key.toLowerCase() === "f"
+    ) {
+      event.preventDefault();
+      prettify();
+    }
+  });
+  input.addEventListener("invalid", () => {
+    input.closest("details").open = true;
+  });
+  format.addEventListener("click", prettify);
+  update();
+}
+document
+  .querySelectorAll("textarea[data-json-editor]")
+  .forEach(enhanceJSONField);
+
 function applyState(next) {
   if (next.run_id === state?.run_id && next.revision < state.revision) return;
   if (next.run_id !== state?.run_id) {
@@ -822,7 +992,7 @@ $("task-form").addEventListener("submit", (event) => {
         ? {
             workflow: {
               name: $("workflow-name").value.trim(),
-              parameters: JSON.parse($("workflow-params").value || "{}"),
+              parameters: JSON.parse($("workflow-params").value.trim() || "{}"),
             },
           }
         : {}),
