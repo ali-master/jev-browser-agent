@@ -6,7 +6,7 @@
 
 **A browser agent with a dynamic, indexed action space. Built for Bun.**
 
-Give it a URL and one goal. A typed decision model picks an operation and an observed element. A chat helper turns the goal into a checklist and writes field text when needed. The agent checks the page after each action, reviews the complete goal against observed evidence, and returns a sourced result.
+Give it a URL and one goal. A typed decision model picks an operation and an observed element. A chat helper turns the goal into a checklist and writes field text when needed. The agent remembers visited pages, adapts to ineffective actions within the run, checks each outcome, and returns a result grounded in observed sources.
 
 A TypeScript rewrite of [Jev Ultrafast](https://github.com/browser-use/jev-ultrafast), with a live browser inspector, observable progress, and switchable local or cloud model connections.
 
@@ -52,7 +52,7 @@ page → element table → operation                 │
                             missing steps ← review → sourced answer + DONE
 ```
 
-Operation and target questions share **one logical request**. If the operation is `CLICK`, only `click_target` can execute. The chat helper creates the checklist, generates `TYPE_TEXT` values, revises remaining steps when necessary, and reviews the final result. Transient transport failures can retry a model request.
+Operation and target questions share **one logical request**. When an operation has several compatible targets, only its matching target answer can execute. With exactly one compatible target, the runtime binds that observed index in `state.bound_targets` and omits the redundant target question. The model still chooses the operation. Such decisions report `target_source: "single_candidate"` and no model target confidence. The chat helper creates the checklist, generates `TYPE_TEXT` values, revises remaining steps when necessary, and reviews the final result. Transient transport failures can retry a model request.
 
 **Completion requires checkpoints and a goal review.** `DONE` is excluded from the decision model's choices during an Agent run. Field values, checked states, expanded menus, navigation and other page evidence must satisfy the checklist. The final review checks the original goal for omitted requirements and supplies an answer with quotes and URLs from observed pages. Unobserved citations are rejected. A selected action or a high model score does not establish completion.
 
@@ -83,24 +83,24 @@ The agent pointer follows browser mouse movements, pulses on actions, and shows 
 
 Choose a scenario, review its editable goal, then press **Start task**:
 
-| Scenario                          | What it exercises                                                                   |
-| --------------------------------- | ----------------------------------------------------------------------------------- |
-| Travel planner / crowded          | Text input, category and cancellation filters, search, scrolling, result navigation |
-| Flights · open search             | Cookie consent and the Google Flights search page                                   |
-| Flights · one-way route           | LHR → LIS, airport suggestions, departure date, one-way results                     |
-| Flights · round trip for two      | AMS ↔ FCO, two adults, departure and return dates                                   |
-| Flights · nonstop comparison      | JFK → LAX, nonstop filter, compare two visible fares                                |
-| Wikipedia · linked research       | Search, read a section, follow a related article, cite both pages                   |
-| Hacker News · compare discussions | Open two discussions, collect visible facts, compare with citations                 |
-| GitHub · release research         | Open the latest stable Bun release, read fixes, inspect its source tag              |
-| Books to Scrape · compare products | Open a category, inspect two products, compare prices and stock                     |
-| Books to Scrape · catalog pagination | Scroll to pagination, open page two, inspect a book and its UPC                   |
-| Quotes to Scrape · tags and authors | Filter by a tag, find a named author, read their biography                          |
-| Quotes to Scrape · paginated discovery | Open the next page, identify the first author, follow their biography           |
-| Open Library · advanced book search | Fill title and author fields, search, inspect a specific edition                   |
-| Gutenberg · find and read a classic | Search for a book, inspect formats, open the text at Chapter I                     |
-| MDN · compare array methods       | Navigate between `map()` and `filter()`, read examples, compare with citations      |
-| NASA · compare planet facts       | Visit Mars and Venus facts, find rotation and orbital periods, compare with units  |
+| Scenario                               | What it exercises                                                                   |
+| -------------------------------------- | ----------------------------------------------------------------------------------- |
+| Travel planner / crowded               | Text input, category and cancellation filters, search, scrolling, result navigation |
+| Flights · open search                  | Cookie consent and the Google Flights search page                                   |
+| Flights · one-way route                | LHR → LIS, airport suggestions, departure date, one-way results                     |
+| Flights · round trip for two           | AMS ↔ FCO, two adults, departure and return dates                                   |
+| Flights · nonstop comparison           | JFK → LAX, nonstop filter, compare two visible fares                                |
+| Wikipedia · linked research            | Search, read a section, follow a related article, cite both pages                   |
+| Hacker News · compare discussions      | Open two discussions, collect visible facts, compare with citations                 |
+| GitHub · release research              | Open the latest stable Bun release, read fixes, inspect its source tag              |
+| Books to Scrape · compare products     | Open a category, inspect two products, compare prices and stock                     |
+| Books to Scrape · catalog pagination   | Scroll to pagination, open page two, inspect a book and its UPC                     |
+| Quotes to Scrape · tags and authors    | Filter by a tag, find a named author, read their biography                          |
+| Quotes to Scrape · paginated discovery | Open the next page, identify the first author, follow their biography               |
+| Open Library · advanced book search    | Fill title and author fields, search, inspect a specific edition                    |
+| Gutenberg · find and read a classic    | Search for a book, inspect formats, open the text at Chapter I                      |
+| MDN · compare array methods            | Navigate between `map()` and `filter()`, read examples, compare with citations      |
+| NASA · compare planet facts            | Visit Mars and Venus facts, find rotation and orbital periods, compare with units   |
 
 **Practice websites** groups the Books to Scrape and Quotes to Scrape tasks. Their controlled catalogs are useful for trying category navigation, pagination, and links before moving to larger sites. Books to Scrape prices are fictional. Every preset fills in an editable goal and opens its own starting URL when you press **Start task**.
 
@@ -182,6 +182,7 @@ for await (const state of agent.run()) {
 
 console.log(agent.state.checkpoints);
 console.log(agent.state.answer);
+console.log(agent.snapshot().memory);
 console.log(agent.snapshot().usage);
 ```
 
@@ -237,7 +238,7 @@ The same flags work with `jev serve`; tasks started in the inspector emit their 
 
 ## Why it moves
 
-- **One request for operation and target.** Speculative target questions share the same structured observation.
+- **Ask only necessary questions.** One request chooses the operation and any ambiguous target. A single compatible target needs no separate model question; freshness and execution checks still apply.
 - **No screenshots in the decision loop.** The model receives visible controls and page text. Browser frames serve the inspector and recordings.
 - **One browser call per snapshot.** Read controls, names, values and visible text together, retaining references to the observed DOM nodes.
 - **Validate before input.** Recheck the document, field values and target context. Resolve current geometry and reject covered controls before acting.
@@ -246,6 +247,8 @@ The same flags work with `jev serve`; tasks started in the inspector emit their 
 - **Reuse text carefully.** An interrupted text result is reused only when the entire helper input and connection settings are unchanged.
 - **Skip redundant generation.** A uniquely bound field can reuse an exact value already present in the user's goal and active checklist. Passwords, ambiguous bindings, and inferred values still use the helper. Browser freshness and input validation still run.
 - **Send evidence once.** Final reviews deduplicate identical sources and avoid repeating their text inside checkpoint metadata; distinct observations and ordered checks remain available.
+- **Keep replanning compact.** Completed steps retain their checks and verification metadata without resending full saved page text or model traces. Target criteria reference the control table instead of repeating its properties. Run memory is assembled locally, without summarization requests.
+- **Continue partial plans before review.** When only a checklist prefix is valid, finish that prefix and return its validation error to the planner. The original goal still needs a complete plan and final verification; partial progress does not trigger an expensive final review.
 
 To diagnose speed, run the CLI with `--log-level debug --log-detail high`: stage timings separate observation, planning, decisions, writing, input and final verification. `model_ms` sums physical model requests; `other_ms` is the remaining run time, including browser work and any pauses. These totals exclude initial browser startup. Recording adds screenshots and disk writes; use `--record` when you need that evidence.
 
@@ -256,6 +259,20 @@ Loading/empty observations and a proposed `BLOCKED` state receive a bounded wait
 Navigating documents get up to 30 observation attempts, spaced 100 ms apart. Section links wait for smooth scrolling to settle, with a two-second ceiling. The pointer rechecks the target after moving because hover can cover, move or replace a control. Previously verified controls retain their evidence when scrolling or SPA navigation hides them; a visible changed value still reopens the affected steps.
 
 After reaching an unexpected page, the helper can revise the remaining steps while preserving completed evidence. At most two revisions and three final goal reviews are allowed between browser inputs that change the observed state. A final review that finds missing requirements adds those steps within the same budget. If its remaining checklist is still invalid after schema repair, the checklist planner gets one bounded recovery attempt; this cannot certify completion. Otherwise the run stops without claiming completion.
+
+## Memory within a run
+
+Memory is enabled for every `Agent`, including the CLI and inspector. Decisions, replanning and field-text requests receive a compact record of earlier pages, verified steps and confirmed actions that produced no visible change. This helps a multi-page task continue from what it already read instead of revisiting completed work.
+
+- **Pages:** retain up to 12 visited URLs, with up to 16,000 characters of actually read text per page. Revisiting a URL refreshes its position and saved content. The working context includes the last four other pages, with excerpts limited to 1,200 characters each, and the last eight verified step summaries.
+- **Feedback:** retain up to 12 ineffective-action records and send the last six. After two confirmed clicks, selections or scrolls with no visible change in the same document and observation, that action is removed from the offered choices. The restriction does not apply to a different observation or document. Text fields remain available for a corrected value; waiting and uncertain execution errors do not teach an action ban.
+- **Verification:** excerpts describe earlier observations, never current control identities or proof that the goal is complete. Final review uses the retained source text and checkpoint evidence. Missing evidence must be revisited; the agent cannot fill it in from a summary.
+
+Inspect `agent.snapshot().memory.pages`, `.completed` and `.lessons`, or the exported trace. Each lesson includes its action, attempt count, last action number and whether it currently excludes a choice. The decision request in **What the model sees** includes the same working memory.
+
+This is feedback within one run, not model training. A new `Agent` starts with empty memory; lessons are not shared between users or automatically loaded from previous recordings. `--record` saves the memory with the trace for inspection, not automatic reuse.
+
+Checklist feedback is retained in `plan_revisions`: the next planning request receives the rejected remainder's validation error and the verified prefix. The same revision budget prevents a helper from endlessly proposing already completed work.
 
 ## Run usage and cost
 
@@ -278,6 +295,7 @@ These numbers are an example, not provider prices. Each request captures its con
 | File                                                | Job                                                           |
 | --------------------------------------------------- | ------------------------------------------------------------- |
 | [agent.ts](src/agent.ts)                            | Async decision loop, checkpoints, budgets and history         |
+| [memory.ts](src/memory.ts)                          | Bounded page memory and observation-scoped action feedback    |
 | [model.ts](src/model.ts)                            | Typed action space, compatible targets and field text         |
 | [plan.ts](src/plan.ts)                              | Checklist schema, completion evidence and regression checks   |
 | [snapshot.js](src/snapshot.js)                      | Atomic DOM observation, indexed controls and freshness guards |
@@ -289,7 +307,7 @@ These numbers are an example, not provider prices. Each request captures its con
 
 ## Evidence and limits
 
-Tests exercise local browser fixtures and mock model endpoints. They independently check field values, exact dropdown selections, submission counts and multi-page waypoint order, along with model protocols, stale-page handling and premature-completion guards. The task suite includes omitted requirements, unexpected destinations and invented answer citations. These checks validate the application; they do not measure a real model's reasoning quality.
+Tests exercise local browser fixtures and mock model endpoints. They independently check field values, exact dropdown selections, submission counts and multi-page waypoint order, along with model protocols, stale-page handling and premature-completion guards. A browser regression test takes an ineffective route twice, switches to a valid route, and answers from two earlier pages. Tests also cover memory limits, isolation, restriction expiry, single-target binding, compact replanning and invented answer citations. These checks validate the application; they do not measure a real model's reasoning quality.
 
 **Goal coverage and answer interpretation still depend on the chat model.** Deterministic checks validate control identities, check types and observed citations. The separate final review reduces missed requirements but cannot prove semantic completeness for an arbitrary goal or an unseen server-side effect. Reading retains up to 16,000 characters from reached viewports, removes changed or hidden text, and preserves the last 12 visited pages for sourced comparisons. Checkpoints retain their own observed evidence. Unseen content is never read from below the viewport. A valid model action can still be the wrong action.
 
