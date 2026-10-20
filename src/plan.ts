@@ -777,7 +777,31 @@ export async function createPlan(
                 scroll: page.scroll,
               },
               elements: actionSpace(page.actions).elements,
-              progress,
+              progress: progress && {
+                completed: progress.completed.map(
+                  ({ instruction, checks, verified }) => ({
+                    instruction,
+                    checks,
+                    verified: verified && {
+                      url: verified.url,
+                      action_count: verified.action_count,
+                    },
+                  }),
+                ),
+                remaining: progress.remaining.map(
+                  ({ instruction, checks }) => ({ instruction, checks }),
+                ),
+                reason: progress.reason,
+                recent_actions: progress.recent_actions?.map(
+                  ({ action, kind, text, url, page_changed }) => ({
+                    action,
+                    kind,
+                    text,
+                    url,
+                    page_changed,
+                  }),
+                ),
+              },
             }),
           },
           ...(correction
@@ -873,13 +897,13 @@ export async function createPlan(
           );
         }
       }
-      return { steps, calls };
+      return { steps, calls, continuation: null };
     } catch (error) {
       failure = (error as Error).message;
       correction = `Correct the previous checklist error: ${failure}`;
       // Execute grounded steps before asking the model to guess an unseen page.
       const steps = validPrefix(output, goal, page);
-      if (steps.length) return { steps, calls };
+      if (steps.length) return { steps, calls, continuation: failure };
       if (failure === previousFailure) break;
     }
   }
@@ -1227,10 +1251,11 @@ When complete:true, provide a concise nonempty answer (or task-result summary) a
 Copy quotes verbatim from sources or from a current elements[].label using sources[0].url. Preserve punctuation and number formatting exactly; do not add thousands separators to an accessible label.
 Use separate short quotes for facts separated by other text. Never concatenate a page heading with a distant table into one quote.
 Never invent facts, quotes or URLs. If evidence is insufficient, return complete:false, answer:null and remaining steps.
-Output ONLY {"complete":boolean,"answer":string|null,"evidence":[{"url":string,"quote":string}],"missing_steps":[]}.
+Output ONLY compact JSON in this key order: {"complete":boolean,"missing_steps":[],"answer":string|null,"evidence":[{"url":string,"quote":string}]}.
+Include missing_steps even when empty. Close the object immediately after evidence; do not pad the response with whitespace.
 Checklist rules apply only to missing_steps:
 ${CHECKLIST_RULES}
-The top-level output MUST be completion_review with complete, answer, evidence, missing_steps; never a steps object.`;
+The top-level output MUST be completion_review with complete, missing_steps, answer, evidence; never a steps object.`;
   const format = {
     type: "json_schema",
     json_schema: {
@@ -1239,9 +1264,14 @@ The top-level output MUST be completion_review with complete, answer, evidence, 
       schema: {
         type: "object",
         additionalProperties: false,
-        required: ["complete", "answer", "evidence", "missing_steps"],
+        required: ["complete", "missing_steps", "answer", "evidence"],
         properties: {
           complete: { type: "boolean" },
+          // Emit the empty checklist before evidence to avoid local decoder whitespace loops.
+          missing_steps: {
+            ...PLAN_FORMAT.json_schema.schema.properties.steps,
+            minItems: 0,
+          },
           answer: { anyOf: [{ type: "string" }, { type: "null" }] },
           evidence: {
             type: "array",
@@ -1255,10 +1285,6 @@ The top-level output MUST be completion_review with complete, answer, evidence, 
                 quote: { type: "string" },
               },
             },
-          },
-          missing_steps: {
-            ...PLAN_FORMAT.json_schema.schema.properties.steps,
-            minItems: 0,
           },
         },
       },

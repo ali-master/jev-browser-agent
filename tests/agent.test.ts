@@ -883,6 +883,99 @@ test("failed checklist attempts remain visible in the trace without executing a 
   expect(JSON.stringify(agent.snapshot())).not.toContain("test-key");
 });
 
+test.each([false, true])(
+  "continues a validated prefix before final review and bounds repeated planning: stuck=%s",
+  async (stuck) => {
+    const state = page();
+    for (const action of state.actions)
+      if ("node" in action) action.ref = `${state.document_id}:${action.node}`;
+    state.fingerprint = fingerprint(state);
+    const input = {
+      instruction: "Enter Lisbon",
+      checks: [{ kind: "value", label: "Search", equals: "Lisbon" }],
+    };
+    let plans = 0;
+    let reviews = 0;
+    const transport = provider(async (request) => {
+      const body = await request.json();
+      if (new URL(request.url).pathname.endsWith("systemone"))
+        return Response.json(
+          decisionResponse(
+            body,
+            state.actions[0]!.kind === "fill" &&
+              state.actions[0]!.value === "Lisbon"
+              ? "CLICK"
+              : "TYPE_TEXT",
+            "2",
+          ),
+        );
+      if (body.response_format.json_schema.name === "completion_review") {
+        reviews++;
+        expect(state.title).toBe("Completed");
+        return completionResponse(body);
+      }
+      plans++;
+      if (plans > 1) {
+        const progress = JSON.parse(body.messages[1].content).progress;
+        expect(progress.reason).toContain("validated prefix");
+        expect(progress.reason).toContain("observable outcome");
+        expect(progress.completed[0].verified).not.toBeNull();
+      }
+      return chatResponse({
+        steps:
+          plans === 1 || stuck
+            ? [
+                input,
+                {
+                  instruction: "Click Go",
+                  checks: [{ kind: "action", label: "Go", action: "click" }],
+                },
+              ]
+            : [
+                {
+                  instruction: "Click Go",
+                  checks: [
+                    { kind: "action", label: "Go", action: "click" },
+                    input.checks[0],
+                  ],
+                },
+              ],
+      });
+    });
+    servers.push(transport.server);
+    const agent = new Agent(
+      {
+        fresh: async () => true,
+        observe: async () => structuredClone(state),
+        close: async () => {},
+        act: async (action) => {
+          if (action.kind === "fill") {
+            const field = state.actions[0];
+            if (field?.kind === "fill") field.value = "Lisbon";
+          } else state.title = "Completed";
+          state.fingerprint = fingerprint(state);
+        },
+      },
+      structuredClone(state),
+      "Enter Lisbon in Search and click Go.",
+      { settings: async () => transport.settings },
+    );
+    await agent.command("tick");
+    expect(reviews).toBe(0);
+    if (stuck) {
+      expect(agent.state.status).toBe("blocked");
+      expect(plans).toBe(3);
+      expect(agent.state.history).toHaveLength(1);
+    } else {
+      expect(plans).toBe(2);
+      await agent.command("tick");
+      expect(agent.state.status).toBe("done");
+      expect(reviews).toBe(1);
+      expect(agent.state.history).toHaveLength(2);
+    }
+  },
+);
+
 test("completion requires a fresh observation, not just matching stale checkpoint values", async () => {
   const { agent, driver } = runner("WAIT", "", 60, [
     {

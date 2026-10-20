@@ -2479,7 +2479,7 @@ test("a dropdown opening click cannot hide an invented value-control label", asy
   expect(result.steps[0]!.checks).toEqual([corrected]);
 });
 
-test("a failed future step preserves only the validated prefix for later goal review", async () => {
+test("a failed future step preserves its validated prefix and the error for continuation", async () => {
   const p = provider(() =>
     chatResponse({
       steps: [
@@ -2502,6 +2502,7 @@ test("a failed future step preserves only the validated prefix for later goal re
   );
   expect(result.calls).toHaveLength(1);
   expect(result.steps).toHaveLength(1);
+  expect(result.continuation).toContain("only an action check");
   expect(result.steps[0]!.checks).toEqual([
     { kind: "value", label: "Search", equals: "Berlin" },
   ]);

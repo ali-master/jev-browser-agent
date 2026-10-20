@@ -76,6 +76,7 @@ export class Agent {
   private budgetActionCount = 0;
   private lastWaitRecovery = 0;
   private planningDocument = "";
+  private planContinuation: string | null = null;
   private readonly readSources = new Map<
     string,
     Pick<PageState, "url" | "title" | "text">
@@ -260,7 +261,7 @@ export class Agent {
         this.modelObserver("planning"),
         this.taskTime,
       );
-      const { steps } = await createPlan(
+      const { steps, continuation } = await createPlan(
         state.page,
         state.interpreted_goal,
         async () => (await this.settings()).text,
@@ -270,7 +271,7 @@ export class Agent {
         this.taskTime,
         state.goal,
       );
-      this.setRemaining(steps);
+      this.setRemaining(steps, continuation);
     }
     await this.progress();
     if (stopped(state)) return;
@@ -513,6 +514,23 @@ export class Agent {
       state.checkpoints.length &&
       state.plan_index === state.checkpoints.length
     ) {
+      if (this.planContinuation) {
+        if (
+          await this.replanRemaining(
+            `Only a validated prefix of the previous plan was executed. Continue the ORIGINAL goal from its verified steps; correct the rejected remainder: ${this.planContinuation}`,
+          )
+        ) {
+          await this.progress();
+        } else {
+          state.status = "blocked";
+          state.stop_reason = {
+            code: "unverified_goal",
+            message:
+              "The partial checklist could not be continued within the revision budget. The original goal has not been verified.",
+          };
+        }
+        return;
+      }
       if (this.reviewCount++ >= 3) {
         state.status = "blocked";
         state.stop_reason = {
@@ -559,8 +577,9 @@ export class Agent {
     }
   }
 
-  private setRemaining(steps: TaskStep[]) {
+  private setRemaining(steps: TaskStep[], continuation: string | null = null) {
     this.planningDocument = this.state.page.document_id;
+    this.planContinuation = continuation;
     const attempted = this.state.checkpoints[this.state.plan_index];
     const completed = this.state.checkpoints
       .slice(0, this.state.plan_index)
@@ -590,20 +609,24 @@ export class Agent {
     delete this.state.stop_reason;
   }
 
-  private revise(reason: string, steps: TaskStep[]) {
+  private revise(
+    reason: string,
+    steps: TaskStep[],
+    continuation: string | null = null,
+  ) {
     this.revisionCount++;
     this.state.plan_revisions.push({
       reason,
       checkpoints: structuredClone(this.state.checkpoints),
     });
-    this.setRemaining(steps);
+    this.setRemaining(steps, continuation);
   }
 
   private async replanRemaining(reason: string) {
     const state = this.state;
     if (this.revisionCount >= 2) return false;
     this.activity("planning");
-    const { steps } = await createPlan(
+    const { steps, continuation } = await createPlan(
       state.page,
       state.interpreted_goal ?? state.goal,
       async () => (await this.settings()).text,
@@ -618,7 +641,7 @@ export class Agent {
       this.taskTime,
       state.goal,
     );
-    this.revise(reason, steps);
+    this.revise(reason, steps, continuation);
     return true;
   }
 
