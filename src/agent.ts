@@ -13,6 +13,8 @@ import {
 } from "./model";
 import { MAX_STEPS } from "./questions";
 import { RunMemory } from "./memory";
+import { WorkflowCache, workflowGoal, workflowOptions } from "./workflow";
+import type { WorkflowOptions } from "./workflow";
 import {
   createPlan,
   interpretGoal,
@@ -39,6 +41,7 @@ export interface AgentOptions extends BrowserOptions {
   maxSteps?: number;
   settings?: SettingsReader;
   onUpdate?: () => void;
+  workflow?: WorkflowOptions;
 }
 const stopped = (state: AgentState) =>
   ["done", "blocked", "error", "closed"].includes(state.status);
@@ -81,6 +84,9 @@ export class Agent {
   private planningDocument = "";
   private planContinuation: string | null = null;
   private readonly memory = new RunMemory();
+  private workflow?: WorkflowCache;
+  private workflowLoaded = false;
+  private workflowText?: string;
 
   constructor(
     readonly browser: BrowserDriver,
@@ -88,6 +94,14 @@ export class Agent {
     goal: string,
     private options: AgentOptions = {},
   ) {
+    if (options.workflow) {
+      this.workflow = new WorkflowCache(
+        goal,
+        page.url,
+        workflowOptions(options.workflow),
+      );
+      goal = workflowGoal(goal, options.workflow);
+    }
     if (!goal.trim() || goal.length > 2000)
       throw new Error("Enter a goal of 1–2,000 characters.");
     this.maxSteps = options.maxSteps ?? MAX_STEPS;
@@ -117,6 +131,7 @@ export class Agent {
       model_calls: [],
       elapsed_ms: 0,
       record: Boolean(options.recordDir),
+      ...(this.workflow ? { workflow: this.workflow.stats } : {}),
     };
   }
 
@@ -125,7 +140,8 @@ export class Agent {
     goal: string,
     options: AgentOptions = {},
   ): Promise<Agent> {
-    if (!goal.trim() || goal.length > 2000)
+    const renderedGoal = workflowGoal(goal, options.workflow);
+    if (!renderedGoal.trim() || renderedGoal.length > 2000)
       throw new Error("Enter a goal of 1–2,000 characters.");
     const settings = options.settings ?? (() => new SettingsStore().read());
     const filters = options.filters ?? (await settings()).filters;
@@ -251,6 +267,11 @@ export class Agent {
     const state = this.state;
     this.selection = null;
     state.decision = null;
+    this.workflowText = undefined;
+    if (this.workflow && !this.workflowLoaded) {
+      await this.workflow.load();
+      this.workflowLoaded = true;
+    }
     this.activity("observing");
     if (!(await this.browser.fresh(state.page)))
       this.acceptObservation(
@@ -470,18 +491,58 @@ export class Agent {
     const config = await this.settings();
     this.activity("deciding");
     const observed = structuredClone(state.page);
-    state.decision = await choose(
+    const replay = this.workflow?.choose(
       observed,
-      state.plan[state.plan_index]!,
-      state.history,
-      config.decision,
-      false,
-      this.modelObserver("decision"),
-      state.checkpoints[state.plan_index]!.checks,
-      state.checkpoints[state.plan_index]!.started_at_action ??
-        state.history.length,
-      this.memory.context(state.page, state.checkpoints),
+      state.checkpoints[state.plan_index]!,
     );
+    this.workflowText = replay?.text;
+    state.decision = replay
+      ? {
+          choice: replay.action.id,
+          operation:
+            replay.action.kind === "click"
+              ? "CLICK"
+              : replay.action.kind === "fill"
+                ? "TYPE_TEXT"
+                : replay.action.kind === "select"
+                  ? "SELECT"
+                  : replay.action.kind === "wait"
+                    ? "WAIT"
+                    : replay.action.kind === "scroll" && replay.action.delta > 0
+                      ? "SCROLL_DOWN"
+                      : "SCROLL_UP",
+          target:
+            "node" in replay.action
+              ? (replay.action.ref ?? String(replay.action.node))
+              : null,
+          model: `workflow:${this.workflow!.stats.name}`,
+          latency_ms: 0,
+          usage: {},
+          confidence: 0,
+          probabilities: { [replay.action.id]: 1 },
+          operation_probabilities: {},
+          target_probabilities: {},
+          target_confidence: null,
+          target_source: "workflow",
+          raw_answers: {},
+          request: {
+            model: "workflow",
+            state: { matched_preconditions: true },
+            questions: {},
+          },
+        }
+      : await choose(
+          observed,
+          state.plan[state.plan_index]!,
+          state.history,
+          config.decision,
+          false,
+          this.modelObserver("decision"),
+          state.checkpoints[state.plan_index]!.checks,
+          state.checkpoints[state.plan_index]!.started_at_action ??
+            state.history.length,
+          this.memory.context(state.page, state.checkpoints),
+        );
     this.selection = {
       fingerprint: observed.fingerprint,
       decision: structuredClone(state.decision),
@@ -562,6 +623,13 @@ export class Agent {
       if (review.complete) {
         state.answer = review.answer;
         state.status = "done";
+        if (this.workflow) {
+          try {
+            await this.workflow.save();
+          } catch {
+            this.workflow.stats.error = "Could not save the local workflow.";
+          }
+        }
         delete state.stop_reason;
       } else if (review.missing_steps.length && this.revisionCount < 2) {
         this.revise(
@@ -805,7 +873,9 @@ export class Agent {
       );
       const check = values?.length === 1 ? values[0] : undefined;
       // Reuse only an explicit user value for the uniquely bound current field.
-      if (
+      if (this.workflowText !== undefined) {
+        text = this.workflowText;
+      } else if (
         check?.kind === "value" &&
         action.input_type !== "password" &&
         new RegExp(
@@ -867,6 +937,13 @@ export class Agent {
           ) ?? { ...action, kind: "click" as const })
         : action;
     if (outcome === "popup_opened") text = undefined;
+    this.workflow?.performed(
+      page,
+      state.checkpoints[state.plan_index]!,
+      executed,
+      text,
+    );
+    this.workflowText = undefined;
     this.pendingText = null;
     state.elapsed_ms = this.elapsed();
     const entry: HistoryEntry = {
@@ -915,6 +992,7 @@ export class Agent {
     if (previous.url !== page.url) this.memory.remember(previous);
     this.state.page = page;
     if (!this.pendingObservation) return;
+    this.workflow?.observed(page);
     const { entry, content, page: before, action } = this.pendingObservation;
     entry.page_changed = observedContent(page) !== content;
     this.memory.record(before, action, entry.page_changed, entry.step);

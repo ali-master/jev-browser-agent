@@ -1,4 +1,5 @@
 import { Agent } from "./agent";
+import { workflowOptions } from "./workflow";
 import { Browser, StalePage } from "./browser";
 import type { AgentPointer } from "./browser";
 import { SettingsStore, object } from "./config";
@@ -285,6 +286,13 @@ export function startServer(
             if (typeof url !== "string" || !url.trim())
               throw new Error("Enter a starting page URL.");
             const config = await store.read();
+            const workflow =
+              body.workflow === undefined
+                ? undefined
+                : workflowOptions({
+                    ...(object(body.workflow) ? body.workflow : {}),
+                    directory: undefined,
+                  });
             if (!config.decision.model)
               throw new Error(
                 "Configure the decision model in Agent settings first.",
@@ -310,6 +318,7 @@ export function startServer(
               settings: () => store.read(),
               cdpUrl: options.cdpUrl,
               filters: config.filters,
+              workflow,
               onUpdate: publishState,
               onPointer(pointer) {
                 latestPointer = { ...pointer, run_id: runId };

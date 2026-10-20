@@ -276,6 +276,26 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
             Start task <span>↗</span>
           </button>
         </div>
+        <details class="run-options settings-grid">
+          <summary>Run options</summary>
+          <label for="workflow-name">Reusable workflow · optional name</label>
+          <input
+            id="workflow-name"
+            placeholder="hotel-search"
+            pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}"
+          />
+          <label for="workflow-params">Goal parameters · JSON</label>
+          <textarea
+            id="workflow-params"
+            rows="2"
+            placeholder='{"city":"Lisbon"}'
+          ></textarea>
+          <p class="muted">
+            Use {{city}} in the goal. Successful runs save locally; later runs
+            reuse actions only when the page and planned step still match.
+          </p>
+        </details>
+        <p id="workflow-status" class="muted" aria-live="polite"></p>
       </form>
       <div class="toolbar">
         <div class="status">

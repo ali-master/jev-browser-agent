@@ -562,6 +562,9 @@ $("task-result").addEventListener("click", (event) => {
 
 function render() {
   if (!state) return;
+  $("workflow-status").textContent = state.workflow
+    ? `Workflow ${state.workflow.name} · ${state.workflow.hits} reused actions · ${state.workflow.misses} mismatches${state.workflow.saved ? " · saved" : ""}${state.workflow.error ? ` · ${state.workflow.error}` : ""}`
+    : "";
   const [phase, title, detail] = presentation();
   $("helper").textContent = `Chat helper · ${state.text_model}`;
   $("phase-label").textContent = phase;
@@ -683,6 +686,14 @@ $("task-form").addEventListener("submit", (event) => {
       scenario: $("scenario").value,
       goal: $("goal").value,
       url: $("start-url").value,
+      ...($("workflow-name").value.trim()
+        ? {
+            workflow: {
+              name: $("workflow-name").value.trim(),
+              parameters: JSON.parse($("workflow-params").value || "{}"),
+            },
+          }
+        : {}),
     });
     document.querySelector(".toolbar").scrollIntoView({ block: "start" });
     if ($("run-mode").value === "auto") await runAutomatically();

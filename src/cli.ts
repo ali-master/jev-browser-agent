@@ -15,6 +15,8 @@ const help = `Jev Browser Agent (Bun)
   --log-level info            error | warn | info | debug | trace
   --log-detail normal         low | normal | high
   --color auto                auto | always | never (auto respects NO_COLOR)
+  --workflow NAME             Learn/reuse a successful local workflow
+  --params JSON               String values for {{name}} goal parameters
 
 Logs go to stderr; the final answer goes to stdout. Debug logs include stage timings.
 
@@ -39,6 +41,8 @@ try {
       "log-level": { type: "string" },
       "log-detail": { type: "string" },
       color: { type: "string" },
+      workflow: { type: "string" },
+      params: { type: "string" },
     },
   });
   const command = positionals[0] ?? "serve";
@@ -122,6 +126,12 @@ try {
       cdpUrl: process.env.BROWSER_CDP_URL,
       recordDir: values.record,
       maxSteps: values["max-steps"] ? Number(values["max-steps"]) : undefined,
+      workflow: values.workflow
+        ? {
+            name: values.workflow,
+            parameters: values.params ? JSON.parse(values.params) : {},
+          }
+        : undefined,
       onUpdate: () => reporter.update(agent.state),
     });
     let cancelled = false;

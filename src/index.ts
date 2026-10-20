@@ -1,5 +1,6 @@
 export { Agent } from "./agent";
 export type { AgentOptions } from "./agent";
+export type { WorkflowOptions } from "./workflow";
 export { Browser, StalePage, fingerprint } from "./browser";
 export type { AgentPointer, BrowserDriver, BrowserOptions } from "./browser";
 export { SettingsStore } from "./config";

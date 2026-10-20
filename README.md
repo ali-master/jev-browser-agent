@@ -236,6 +236,23 @@ The same flags work with `jev serve`; tasks started in the inspector emit their 
 
 `--color auto|always|never` defaults to `auto`. Auto detects a terminal and respects `NO_COLOR`, `FORCE_COLOR`, and `TERM=dumb`; an explicit flag wins. Logs include page changes, model latency, decisions, executed actions, checkpoint progress, stop reasons, and total model versus remaining elapsed time. Raw prompts, field values, API keys and URL queries are not included by the reporter. Debug adds usage and timing summaries; trace adds token counts. Page labels and error messages can still contain site content, so treat saved logs as private.
 
+## Reusable workflows
+
+Give a successful task a local name and parameterize repeated values in its goal:
+
+```ts
+await using agent = await Agent.create("https://example.com/search", "Search for {{city}}.", {
+  workflow: { name: "city-search", parameters: { city: "Lisbon" } },
+});
+for await (const state of agent.run()) console.log(state.workflow);
+```
+
+The CLI accepts `--workflow city-search --params '{"city":"Lisbon"}'`; the inspector exposes the same fields under **Run options**. Use `{{city}}` in the goal and change its supplied value for the next run.
+
+Only a run that passes the final goal review saves a recipe, in `.jev/workflows/` with private file permissions. Planning and final verification still run. Intermediate decisions can reuse an action only when its normalized page state, checklist step and unique semantic target match. Current node references and browser freshness guards are always used. A changed precondition or unexpected result disables replay for that run and returns to normal decisions. `state.workflow` reports hits, misses and whether the recipe was saved.
+
+Recipes contain instructions and typed values, so keep them private. This is conservative reuse, not generalization to a changed website; dynamic content can cause a safe cache miss. Library callers can set `workflow.directory`.
+
 ## Page filters
 
 Expand **Agent settings** in the inspector to enable **Block ad requests**, add **Blocked URLs**, or choose CSS selectors under **Remove elements**. All three are off or empty by default. Saved filters live in `.jev/settings.json` alongside the model connections and are used by the inspector, CLI and library. Changes apply to the **next task**; an active run keeps the filters it started with.

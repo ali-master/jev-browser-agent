@@ -143,7 +143,7 @@ export interface Decision extends ModelCall {
   operation_probabilities: Record<string, number>;
   target_probabilities: Record<string, number>;
   target_confidence: number | null;
-  target_source?: "model" | "single_candidate" | null;
+  target_source?: "model" | "single_candidate" | "workflow" | null;
   raw_answers: Record<string, unknown>;
   request: DecisionRequest;
 }
@@ -216,6 +216,13 @@ export interface AgentMemory {
   }[];
 }
 export interface AgentState {
+  workflow?: {
+    name: string;
+    hits: number;
+    misses: number;
+    saved: boolean;
+    error?: string;
+  };
   goal: string;
   interpreted_goal?: string;
   page: PageState;
