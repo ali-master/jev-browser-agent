@@ -28,7 +28,7 @@ test("landing examples copy independently and remain usable across themes and na
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(server.url.href);
-    expect(await page.locator(".scenario-grid li").count()).toBe(8);
+    expect(await page.locator("#scenarios .scenario-grid li").count()).toBe(8);
     const answer = (await page.locator("#answer-example").innerText()).trim();
     await page.locator("[data-copy-target]").click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
