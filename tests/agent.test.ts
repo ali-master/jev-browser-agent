@@ -215,6 +215,49 @@ test("navigation retains actually read text independently of checkpoint evidence
   ]);
 });
 
+test.each([
+  ["#casa-flora", "done"],
+  ["#casa-flora-other", "ready"],
+  ["?next=casa-flora", "ready"],
+] as const)(
+  "checks a button's destination against the actual fragment: %s",
+  async (suffix, status) => {
+    const { agent, driver } = runner("CLICK", "1", 60, [
+      {
+        instruction: "Open the stay",
+        checks: [
+          { kind: "action", label: "View Casa Flora", action: "click" },
+          { kind: "url", includes: "casa-flora" },
+        ],
+      },
+    ]);
+    agent.state.page.actions = [
+      {
+        id: "stay",
+        kind: "click",
+        node: 1,
+        ref: "fixture-document:1",
+        role: "button",
+        label: "View Casa Flora",
+      },
+    ];
+    driver.observe.mockResolvedValue({
+      ...page(),
+      url: `https://example.test/${suffix}`,
+      title: "Casa Flora",
+      fingerprint: "details",
+      actions: [],
+    });
+    await agent.command("tick");
+    expect(agent.state.checkpoints[0]!.checks[1]).toEqual({
+      kind: "url",
+      includes: "casa-flora",
+    });
+    expect(agent.state.history).toHaveLength(1);
+    expect(agent.state.status).toBe(status);
+  },
+);
+
 test("a field that opens a picker records only its actual click, not an unexecuted fill", async () => {
   const { agent, driver } = runner();
   driver.act.mockResolvedValue("popup_opened");

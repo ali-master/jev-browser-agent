@@ -1067,6 +1067,14 @@ export function updateProgress(
       if (check.kind === "action") return performed(check);
       if (check.kind === "url") {
         const url = new URL(page.url);
+        // SPA buttons can reveal an exact fragment without exposing a link href.
+        if (
+          actions.length &&
+          actions.every(performed) &&
+          url.hash &&
+          check.includes === url.hash.slice(1)
+        )
+          return true;
         // A redirect destination inside a query is not the page we reached.
         if (check.includes.includes("?")) {
           const expected = new URL(check.includes, page.url);
