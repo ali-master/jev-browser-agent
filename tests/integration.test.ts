@@ -242,7 +242,9 @@ test("inspector saves private settings and drives a complete task through its co
     await page.locator(`#${kind}-input-price`).fill("1");
     await page.locator(`#${kind}-output-price`).fill("2");
   }
-  await page.getByRole("button", { name: "Save model settings" }).click();
+  await page.locator("#blocked-urls").fill("https://ads.example.com/*");
+  await page.locator("#remove-selectors").fill(".advertisement\nvideo");
+  await page.getByRole("button", { name: "Save settings" }).click();
   await page.waitForFunction(() =>
     document
       .querySelector("#settings-status")
@@ -255,6 +257,11 @@ test("inspector saves private settings and drives a complete task through its co
   ).text();
   expect(publicSettings).not.toContain("private-test-key");
   expect((await store.read()).decision.apiKey).toBe("private-test-key");
+  expect((await store.read()).filters).toEqual({
+    blockAds: false,
+    blockedUrls: ["https://ads.example.com/*"],
+    removeSelectors: [".advertisement", "video"],
+  });
   expect((await store.read()).decision.pricing).toEqual({
     inputUsdPerMillion: 1,
     outputUsdPerMillion: 2,

@@ -50,7 +50,7 @@
         <div class="model-tag" id="model-tag">Configure your models</div>
       </section>
       <details id="model-settings" open>
-        <summary>Model settings · local or cloud</summary>
+        <summary>Agent settings · models &amp; page filters</summary>
         <p class="muted">
           Choose a decision model and a chat helper. Changes apply to the next
           request. Base URLs usually end in /v1.
@@ -157,10 +157,57 @@
               </details>
             </fieldset>
           </div>
+          <div class="settings-grid page-filter-settings">
+            <fieldset>
+              <legend>Network filtering</legend>
+              <label class="overlay-control" for="block-ads">
+                <input id="block-ads" type="checkbox" /> Block ad requests
+              </label>
+              <p class="muted">
+                Uses EasyList. Rules download once per server or CLI process
+                when enabled; no page content is sent to the list provider.
+              </p>
+              <label for="blocked-urls"
+                >Blocked URLs · one pattern per line</label
+              >
+              <textarea
+                id="blocked-urls"
+                rows="4"
+                spellcheck="false"
+                aria-describedby="blocked-urls-help"
+                placeholder="https://example.com/ads/*&#10;*://ads.example.com/*"
+              ></textarea>
+              <p class="muted" id="blocked-urls-help">
+                Use full HTTP(S) URL patterns, with * for wildcards. Blocks
+                matching requests and redirects in the agent's tab. Blocked
+                links are also excluded from its choices.
+              </p>
+            </fieldset>
+            <fieldset>
+              <legend>Page cleanup</legend>
+              <label for="remove-selectors"
+                >Remove elements · one CSS selector per line</label
+              >
+              <textarea
+                id="remove-selectors"
+                rows="5"
+                spellcheck="false"
+                aria-describedby="remove-selectors-help"
+                placeholder=".advertisement&#10;aside.sponsored&#10;video"
+              ></textarea>
+              <p class="muted" id="remove-selectors-help">
+                Removes matching elements from the main document before each
+                analysis, including after navigation. Removing forms or scripts
+                can break a task. It does not undo scripts that already ran.
+              </p>
+            </fieldset>
+          </div>
+          <p class="muted">
+            Browser filters apply when you start a new task. All filters are off
+            by default.
+          </p>
           <div class="settings-actions">
-            <button id="save-settings" type="submit">
-              Save model settings
-            </button>
+            <button id="save-settings" type="submit">Save settings</button>
             <button id="check-models" type="button">
               Check saved connections
             </button>

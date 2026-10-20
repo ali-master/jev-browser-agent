@@ -1604,6 +1604,7 @@ footer {
   margin: 12px 0 6px;
 }
 .settings-grid input:not([type="checkbox"]),
+.settings-grid textarea,
 #start-url {
   width: 100%;
   border: 1px solid var(--input);
@@ -1612,6 +1613,18 @@ footer {
   background: var(--card);
   color: var(--foreground);
   font: inherit;
+}
+.settings-grid textarea {
+  min-height: 118px;
+  resize: vertical;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.page-filter-settings .muted {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 input::placeholder,
 textarea::placeholder {

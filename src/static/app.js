@@ -791,6 +791,11 @@ function showSettings(settings) {
   }
   $("model-tag").textContent =
     settings.decision.model || "Configure your models";
+  $("block-ads").checked = settings.filters?.blockAds ?? false;
+  $("blocked-urls").value = (settings.filters?.blockedUrls ?? []).join("\n");
+  $("remove-selectors").value = (settings.filters?.removeSelectors ?? []).join(
+    "\n",
+  );
 }
 $("settings-form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -818,6 +823,24 @@ $("settings-form").addEventListener("submit", (event) => {
       else if ($(`${kind}-key`).value)
         body[kind].apiKey = $(`${kind}-key`).value;
     }
+    const lines = (id) =>
+      $(id)
+        .value.split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    body.filters = {
+      blockAds: $("block-ads").checked,
+      blockedUrls: lines("blocked-urls"),
+      removeSelectors: lines("remove-selectors"),
+    };
+    try {
+      for (const selector of body.filters.removeSelectors)
+        document.querySelector(selector);
+    } catch {
+      throw Error(
+        "Invalid CSS selector in Remove elements. Correct it before saving.",
+      );
+    }
     const response = await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Demo-Token": token },
@@ -827,9 +850,10 @@ $("settings-form").addEventListener("submit", (event) => {
     if (!response.ok) throw Error(settings.error || "Could not save settings");
     showSettings(settings);
     $("connection-checks").replaceChildren();
-    $("settings-status").textContent = "Saved · applies to the next request";
+    $("settings-status").textContent =
+      "Saved · models apply now; browser filters apply to new tasks";
     applyState(await fetch("/api/state").then((r) => r.json()));
-  }, "Saving model settings…");
+  }, "Saving agent settings…");
 });
 $("check-models").addEventListener("click", () =>
   perform(async () => {

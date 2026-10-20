@@ -912,7 +912,7 @@ export async function createPlan(
     }
   }
   throw new Error(
-    `Chat helper could not produce a verifiable checklist after ${attempts} attempts; no browser action executed for this plan. ${failure} Check the Chat helper model in Model settings; a successful connection check does not verify planning quality.`,
+    `Chat helper could not produce a verifiable checklist after ${attempts} attempts; no browser action executed for this plan. ${failure} Check the Chat helper model in Agent settings; a successful connection check does not verify planning quality.`,
   );
 }
 

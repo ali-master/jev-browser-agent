@@ -1270,7 +1270,7 @@ test("planner repair and the final error explain the invalid step without echoin
   expect(message).toContain(reason);
   expect(message).toContain("after 2 attempts");
   expect(message).toContain("no browser action executed for this plan");
-  expect(message).toContain("Chat helper model in Model settings");
+  expect(message).toContain("Chat helper model in Agent settings");
   expect(message).not.toContain("test-key");
   expect(calls).toBe(2);
 });

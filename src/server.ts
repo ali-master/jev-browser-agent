@@ -287,11 +287,11 @@ export function startServer(
             const config = await store.read();
             if (!config.decision.model)
               throw new Error(
-                "Configure the decision model in Model settings first.",
+                "Configure the decision model in Agent settings first.",
               );
             if (!config.text.model)
               throw new Error(
-                "Configure the chat helper in Model settings first; it creates and verifies the task checklist.",
+                "Configure the chat helper in Agent settings first; it creates and verifies the task checklist.",
               );
             const previous = agent;
             agent = null;
@@ -309,6 +309,7 @@ export function startServer(
               showPointer: true,
               settings: () => store.read(),
               cdpUrl: options.cdpUrl,
+              filters: config.filters,
               onUpdate: publishState,
               onPointer(pointer) {
                 latestPointer = { ...pointer, run_id: runId };
