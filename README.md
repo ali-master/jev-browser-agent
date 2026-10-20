@@ -330,7 +330,7 @@ const options = {
 // Goal: "Enter {{secret:password}} in Password, then sign in."
 ```
 
-The CLI accepts `--secrets private-secrets.json`; the inspector accepts the same JSON in its masked **Secrets JSON** input and clears it after starting. Secret values stay out of saved settings. Only the configured exact origin and field label can receive the value, and the goal must explicitly name its placeholder. Password inputs remain excluded unless bound this way.
+The CLI accepts `--secrets private-secrets.json`. In the inspector, open **Run options → Run secrets → Add secret**, then enter a reference name, private value, allowed site and destination field label. Use the displayed `{{secret:name}}` reference in your goal. Values are masked by default and the form clears after a successful start; they stay out of saved settings. Only the configured exact origin and field label can receive the value, and the goal must explicitly name its placeholder. Password inputs remain excluded unless bound this way.
 
 Prompts, history and traces use placeholders; changed password contents still invalidate an old decision. Screenshots, live images, pointer events and workflow recording/replay are disabled for runs containing secrets. Literal values are redacted from observed text too; arbitrary encodings or transformations performed by a site cannot be recognized as secrets. Give credentials only to sites you trust.
 

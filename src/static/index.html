@@ -300,19 +300,169 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
             be combined with it.
           </p>
           <p id="webmcp-status" class="muted"></p>
-          <label for="secret-bindings"
-            >Secrets JSON · held only for this run</label
-          >
-          <input
+          <section
             id="secret-bindings"
-            type="password"
-            autocomplete="off"
-            placeholder='{"password":{"value":"…","origin":"https://example.com","label":"Password"}}'
-          />
+            class="secrets-panel"
+            aria-labelledby="secrets-title"
+          >
+            <div class="secrets-heading">
+              <span class="secrets-icon" aria-hidden="true">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="5" y="10" width="14" height="11" rx="3" />
+                  <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" />
+                </svg>
+              </span>
+              <div class="secrets-intro">
+                <div class="secrets-title-row">
+                  <h3 id="secrets-title">Run secrets</h3>
+                  <span class="secrets-badge">This run only</span>
+                </div>
+                <p>Private values. Explicit destinations.</p>
+              </div>
+              <button id="add-secret" type="button">
+                <span aria-hidden="true">+</span> Add secret
+              </button>
+            </div>
+            <div id="secret-empty" class="secrets-empty">
+              <strong
+                >Let the agent use it, without putting it in your goal.</strong
+              >
+              <p>
+                Add a password or token and choose the site and field where it
+                can be entered.
+              </p>
+            </div>
+            <div id="secret-list"></div>
+            <div class="secrets-footer">
+              <p>
+                Values stay out of model prompts and traces. Screenshots are
+                disabled for runs using secrets.
+              </p>
+              <span id="secret-count" role="status">No secrets added</span>
+            </div>
+          </section>
+          <template id="secret-template">
+            <article class="secret-card">
+              <div class="secret-card-heading">
+                <h4>Secret</h4>
+                <button
+                  type="button"
+                  data-secret-action="remove"
+                  class="secret-remove"
+                >
+                  <svg
+                    aria-hidden="true"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path
+                      d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"
+                    />
+                  </svg>
+                  Remove
+                </button>
+              </div>
+              <div class="secret-fields">
+                <div class="secret-field" data-secret-field="name">
+                  <label>Reference name</label>
+                  <input
+                    type="text"
+                    placeholder="password"
+                    required
+                    maxlength="32"
+                    pattern="[a-zA-Z][a-zA-Z0-9_\-]{0,31}"
+                    autocomplete="off"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    dir="ltr"
+                  />
+                  <small class="secret-hint"
+                    >A letter first, then letters, numbers, _ or -.</small
+                  >
+                  <small class="secret-error" hidden></small>
+                </div>
+                <div class="secret-field" data-secret-field="value">
+                  <label>Secret value</label>
+                  <div class="secret-value-control">
+                    <input
+                      type="password"
+                      placeholder="Enter the private value"
+                      required
+                      maxlength="2000"
+                      autocomplete="off"
+                      spellcheck="false"
+                      autocapitalize="off"
+                      dir="ltr"
+                    />
+                    <button
+                      type="button"
+                      data-secret-action="reveal"
+                      aria-pressed="false"
+                    >
+                      Show
+                    </button>
+                  </div>
+                  <small class="secret-hint"
+                    >Kept in memory for this run. Not saved in settings.</small
+                  >
+                  <small class="secret-error" hidden></small>
+                </div>
+                <div class="secret-field" data-secret-field="origin">
+                  <label>Allowed site</label>
+                  <input
+                    type="url"
+                    placeholder="https://example.com"
+                    required
+                    autocomplete="off"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    dir="ltr"
+                  />
+                  <small class="secret-hint"
+                    >Include http:// or https://, without a page path.</small
+                  >
+                  <small class="secret-error" hidden></small>
+                </div>
+                <div class="secret-field" data-secret-field="label">
+                  <label>Destination field</label>
+                  <input
+                    type="text"
+                    placeholder="Password"
+                    required
+                    maxlength="200"
+                    autocomplete="off"
+                    dir="auto"
+                  />
+                  <small class="secret-hint"
+                    >Match the field's label on that site exactly.</small
+                  >
+                  <small class="secret-error" hidden></small>
+                </div>
+              </div>
+              <div class="secret-reference">
+                <span>Use in your goal</span>
+                <code>{{secret:name}}</code>
+              </div>
+            </article>
+          </template>
           <p class="muted">
-            Use {{secret:password}} in the goal. Images are disabled when
-            secrets are supplied. Create a login profile with the jev login
-            command.
+            Create a reusable login profile with the
+            <code>jev login</code> command.
           </p>
           <label for="workflow-name">Reusable workflow · optional name</label>
           <input

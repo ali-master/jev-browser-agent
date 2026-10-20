@@ -192,6 +192,196 @@ document
   .querySelectorAll("textarea[data-json-editor]")
   .forEach(enhanceJSONField);
 
+const secretCards = () => [...$("secret-list").children];
+const secretInput = (card, field) =>
+  card.querySelector(`[data-secret-field="${field}"] input`);
+let nextSecretId = 0;
+
+/** Match the vault's site boundary, accepting the equivalent trailing root slash. */
+function secretOrigin(value) {
+  try {
+    const url = new URL(value.trim());
+    if (
+      ["http:", "https:"].includes(url.protocol) &&
+      !url.username &&
+      !url.password &&
+      url.pathname === "/" &&
+      !url.search &&
+      !url.hash
+    )
+      return url.origin;
+  } catch {}
+  return null;
+}
+
+/** Validate bindings without copying private values into markup, errors or storage. */
+function validateSecretForm() {
+  const names = new Map(),
+    destinations = new Map();
+  for (const [index, card] of secretCards().entries()) {
+    const name = secretInput(card, "name"),
+      value = secretInput(card, "value");
+    const origin = secretInput(card, "origin"),
+      label = secretInput(card, "label");
+    for (const input of card.querySelectorAll("input"))
+      input.setCustomValidity("");
+    if (name.value && !/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(name.value))
+      name.setCustomValidity(
+        "Use 1–32 characters: a letter first, then letters, numbers, _ or -.",
+      );
+    if (value.value.includes("{{secret:") || value.value.length > 2000)
+      value.setCustomValidity(
+        "Enter the actual private value, up to 2,000 characters, without a secret reference.",
+      );
+    const site = secretOrigin(origin.value);
+    if (origin.value && !site)
+      origin.setCustomValidity(
+        "Use an HTTP(S) site address without a path, query, fragment or login details.",
+      );
+    if (label.value && (!label.value.trim() || label.value.length > 200))
+      label.setCustomValidity(
+        "Enter the exact field label, up to 200 characters.",
+      );
+    const destination =
+      site && label.value.trim()
+        ? JSON.stringify([site, label.value.trim()])
+        : "";
+    for (const [key, input, seen, message] of [
+      [
+        name.value,
+        name,
+        names,
+        "Choose a different reference name; this one is already used.",
+      ],
+      [
+        destination,
+        label,
+        destinations,
+        "Another secret already uses this site and destination field.",
+      ],
+    ]) {
+      if (!key) continue;
+      if (seen.has(key)) {
+        input.setCustomValidity(message);
+        seen.get(key).setCustomValidity(message);
+      } else seen.set(key, input);
+    }
+    card.querySelector("h4").textContent =
+      `Secret ${String(index + 1).padStart(2, "0")}`;
+    card
+      .querySelector("[data-secret-action=remove]")
+      .setAttribute("aria-label", `Remove secret ${index + 1}`);
+    card
+      .querySelector("[data-secret-action=reveal]")
+      .setAttribute(
+        "aria-label",
+        `${value.type === "password" ? "Show" : "Hide"} secret ${index + 1} value`,
+      );
+    card.querySelector(".secret-reference code").textContent =
+      `{{secret:${/^[a-zA-Z][a-zA-Z0-9_-]{0,31}$/.test(name.value) ? name.value : "name"}}}`;
+  }
+  for (const card of secretCards()) {
+    for (const input of card.querySelectorAll("input")) {
+      const error = input
+        .closest(".secret-field")
+        .querySelector(".secret-error");
+      const invalid = input.dataset.touched === "true" && !input.validity.valid;
+      input.setAttribute("aria-invalid", String(invalid));
+      error.hidden = !invalid;
+      error.textContent = invalid ? input.validationMessage : "";
+    }
+  }
+  const count = secretCards().length;
+  $("secret-empty").hidden = count > 0;
+  const summary = count
+    ? `${count} ${count === 1 ? "secret" : "secrets"} · ${20 - count} available`
+    : "No secrets added";
+  if ($("secret-count").textContent !== summary)
+    $("secret-count").textContent = summary;
+  $("add-secret").disabled = Boolean(busy || state?.server_busy || count >= 20);
+}
+
+/** Add an accessible binding card; private values exist only in the native input. */
+function addSecret() {
+  if (busy || state?.server_busy || secretCards().length >= 20) return;
+  const card = $("secret-template").content.firstElementChild.cloneNode(true);
+  const id = ++nextSecretId;
+  card.querySelector("h4").id = `secret-${id}-title`;
+  card.setAttribute("aria-labelledby", `secret-${id}-title`);
+  for (const field of card.querySelectorAll(".secret-field")) {
+    const input = field.querySelector("input"),
+      hint = field.querySelector(".secret-hint");
+    const error = field.querySelector(".secret-error");
+    input.id = `secret-${id}-${field.dataset.secretField}`;
+    hint.id = `${input.id}-hint`;
+    error.id = `${input.id}-error`;
+    field.querySelector("label").htmlFor = input.id;
+    input.setAttribute("aria-describedby", `${hint.id} ${error.id}`);
+  }
+  card
+    .querySelector("[data-secret-action=reveal]")
+    .setAttribute("aria-controls", secretInput(card, "value").id);
+  $("secret-list").append(card);
+  validateSecretForm();
+  secretInput(card, "name").focus();
+}
+
+/** Serialize at submission time only; keep references out of the request when empty. */
+function readSecrets() {
+  return Object.fromEntries(
+    secretCards().map((card) => [
+      secretInput(card, "name").value,
+      {
+        value: secretInput(card, "value").value,
+        origin: secretOrigin(secretInput(card, "origin").value),
+        label: secretInput(card, "label").value.trim(),
+      },
+    ]),
+  );
+}
+
+/** Clear successful submissions so a later task cannot accidentally reuse a value. */
+function clearSecrets() {
+  for (const card of secretCards()) secretInput(card, "value").value = "";
+  $("secret-list").replaceChildren();
+  validateSecretForm();
+}
+
+$("add-secret").addEventListener("click", addSecret);
+$("secret-bindings").addEventListener("input", (event) => {
+  if (event.target.tagName !== "INPUT") return;
+  event.target.dataset.touched = "true";
+  validateSecretForm();
+});
+$("secret-bindings").addEventListener(
+  "invalid",
+  (event) => {
+    $("secret-bindings").closest("details").open = true;
+    event.target.dataset.touched = "true";
+    validateSecretForm();
+  },
+  true,
+);
+$("secret-list").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-secret-action]");
+  if (!button || button.disabled) return;
+  const card = button.closest(".secret-card"),
+    value = secretInput(card, "value");
+  if (button.dataset.secretAction === "remove") {
+    const next = card.nextElementSibling || card.previousElementSibling;
+    value.value = "";
+    card.remove();
+    validateSecretForm();
+    (next ? secretInput(next, "name") : $("add-secret")).focus();
+  } else {
+    const reveal = value.type === "password";
+    value.type = reveal ? "text" : "password";
+    button.textContent = reveal ? "Hide" : "Show";
+    button.setAttribute("aria-pressed", String(reveal));
+    validateSecretForm();
+  }
+});
+
 function applyState(next) {
   if (next.run_id === state?.run_id && next.revision < state.revision) return;
   if (next.run_id !== state?.run_id) {
@@ -240,6 +430,9 @@ function controls() {
     "check-models",
   ])
     $(id).disabled = working;
+  for (const input of $("secret-bindings").querySelectorAll("input, button"))
+    input.disabled = working;
+  $("add-secret").disabled = Boolean(working || secretCards().length >= 20);
   $("choose").disabled = working || !live;
   $("execute").disabled = working || !state?.decision || !live;
   $("auto").disabled = working || !live;
@@ -961,6 +1154,15 @@ async function runAutomatically() {
 }
 $("task-form").addEventListener("submit", (event) => {
   event.preventDefault();
+  validateSecretForm();
+  if (!$("task-form").reportValidity()) return;
+  for (const card of secretCards()) {
+    secretInput(card, "value").type = "password";
+    const button = card.querySelector("[data-secret-action=reveal]");
+    button.textContent = "Show";
+    button.setAttribute("aria-pressed", "false");
+  }
+  validateSecretForm();
   paused = false;
   perform(async () => {
     await call("reset", {
@@ -974,17 +1176,7 @@ $("task-form").addEventListener("submit", (event) => {
       ...($("profile-name").value.trim()
         ? { profile: $("profile-name").value.trim() }
         : {}),
-      ...($("secret-bindings").value.trim()
-        ? {
-            secrets: (() => {
-              try {
-                return JSON.parse($("secret-bindings").value);
-              } catch {
-                throw new Error("Secrets must be a valid JSON object.");
-              }
-            })(),
-          }
-        : {}),
+      ...(secretCards().length ? { secrets: readSecrets() } : {}),
       ...($("output-schema").value.trim()
         ? { outputSchema: JSON.parse($("output-schema").value) }
         : {}),
@@ -997,7 +1189,7 @@ $("task-form").addEventListener("submit", (event) => {
           }
         : {}),
     });
-    $("secret-bindings").value = "";
+    clearSecrets();
     document.querySelector(".toolbar").scrollIntoView({ block: "start" });
     if ($("run-mode").value === "auto") await runAutomatically();
   }, "Opening a fresh browser…");
