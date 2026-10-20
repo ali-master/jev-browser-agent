@@ -346,17 +346,78 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
             </p>
             <div id="choices" class="choices"></div>
           </details>
-          <section
-            id="task-result"
-            class="last-result"
-            hidden
-            aria-live="polite"
-          >
-            <h3>Verified result</h3>
-            <p id="answer" dir="auto"></p>
-            <ul id="answer-sources"></ul>
-          </section>
         </aside>
+      </section>
+      <section
+        id="task-result"
+        class="task-result"
+        hidden
+        aria-labelledby="result-title"
+      >
+        <div class="result-header">
+          <div class="result-heading">
+            <span class="result-mark" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+              >
+                <path d="m6 12 4 4 8-8" />
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+            </span>
+            <div>
+              <p class="result-eyebrow" id="result-status">TASK COMPLETE</p>
+              <h2 id="result-title">Verified result</h2>
+            </div>
+          </div>
+          <div class="result-actions">
+            <span id="result-meta" class="result-meta"></span>
+            <button
+              type="button"
+              id="copy-answer"
+              class="copy-answer"
+              title="Copy the original answer as Markdown"
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <rect x="7" y="7" width="10" height="10" rx="2" />
+                <path
+                  d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"
+                />
+              </svg>
+              <span>Copy answer</span>
+            </button>
+          </div>
+        </div>
+        <div class="result-body">
+          <div class="result-reading">
+            <div id="answer" class="answer-prose" dir="auto"></div>
+          </div>
+          <div id="result-references" class="result-references">
+            <div class="result-sources-heading">
+              <h3>Sources</h3>
+              <span id="source-count"></span>
+            </div>
+            <p class="result-sources-note">
+              Pages behind this answer. Open a source or inspect the observed
+              evidence.
+            </p>
+            <ol id="answer-sources"></ol>
+          </div>
+        </div>
+        <div class="result-footer">
+          <span>Answer &amp; source evidence</span>
+          <span id="result-copy-status" role="status" aria-live="polite"
+            >Select any text to copy, or copy the full answer as Markdown.</span
+          >
+        </div>
       </section>
       <section class="trace">
         <div class="trace-heading">

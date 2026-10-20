@@ -5,6 +5,7 @@ import { SettingsStore, object } from "./config";
 import { MAX_STEPS } from "./questions";
 import { checkModels } from "./model";
 import { scenarios, scenarioOptions } from "./scenarios";
+import { renderAnswer } from "./result";
 import type { AgentState } from "./types";
 
 const staticRoot = new URL("./static/", import.meta.url);
@@ -69,6 +70,7 @@ export function startServer(
       elements: [],
     }),
     ...(opening ? { activity: { kind: "opening", started_at: opening } } : {}),
+    answer_html: agent?.state.answer ? renderAnswer(agent.state.answer) : "",
     text_model: textModel,
     max_steps: agent?.maxSteps ?? MAX_STEPS,
     revision,

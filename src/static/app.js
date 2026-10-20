@@ -9,6 +9,7 @@ let reviewStep = null,
   liveFrame = null,
   livePointer = null,
   historyKey = "";
+let resultKey = "";
 const stopped = () =>
   ["done", "blocked", "error", "closed"].includes(state?.status);
 const escape = (value) =>
@@ -422,6 +423,143 @@ function renderDetails() {
     2,
   );
 }
+function renderResult() {
+  $("task-result").hidden = !state.answer;
+  if (!state.answer) {
+    resultKey = "";
+    return;
+  }
+  const review = state.completion_reviews?.at(-1);
+  const key = JSON.stringify([
+    state.run_id,
+    state.answer,
+    state.answer_html,
+    review,
+    state.history.length,
+    state.elapsed_ms,
+  ]);
+  // Preserve selection, expanded evidence and copy feedback during live updates.
+  if (key === resultKey) return;
+  resultKey = key;
+  const verified = state.status === "done" && review?.complete;
+  $("result-status").textContent = verified ? "TASK COMPLETE" : "TASK RESULT";
+  $("result-title").textContent = verified ? "Verified result" : "Result";
+  $("result-meta").textContent =
+    `${state.history.length} actions · ${seconds(state.elapsed_ms || 0)}`;
+  if (state.answer_html) $("answer").innerHTML = state.answer_html;
+  else $("answer").textContent = state.answer;
+  $("copy-answer").querySelector("span").textContent = "Copy answer";
+  $("copy-answer").dataset.copied = "false";
+  $("result-copy-status").textContent =
+    "Select any text to copy, or copy the full answer as Markdown.";
+
+  const sources = new Map();
+  for (const source of review?.evidence || []) {
+    try {
+      const url = new URL(source.url);
+      if (!["http:", "https:"].includes(url.protocol)) continue;
+      if (!sources.has(url.href))
+        sources.set(url.href, { url, quotes: new Set() });
+      if (source.quote)
+        sources
+          .get(url.href)
+          .quotes.add(source.quote.trim().replace(/\s+/g, " "));
+    } catch {
+      /* Invalid citations remain outside the navigable source list. */
+    }
+  }
+  const pages = [
+    state.page,
+    ...(state.read_sources || []),
+    ...(state.frames || []),
+  ].filter(Boolean);
+  $("result-references").hidden = sources.size === 0;
+  $("task-result").classList.toggle("without-sources", sources.size === 0);
+  $("source-count").textContent = sources.size;
+  const copyIcon =
+    '<svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/></svg>';
+  $("answer-sources").innerHTML = [...sources.values()]
+    .map(({ url, quotes }, i) => {
+      const page = pages.find(
+        (page) => page.url?.split("#")[0] === url.href.split("#")[0],
+      );
+      const title = page?.title || url.hostname;
+      return `<li class="result-source">
+      <div class="source-topline">
+        <span class="source-number" aria-hidden="true">${String(i + 1).padStart(2, "0")}</span>
+        <a class="source-link" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer" title="${escape(url.href)}">
+          <span class="source-title">${escape(title)} <span aria-hidden="true">↗</span></span>
+          <span class="source-host" dir="ltr">${escape(url.hostname)}</span>
+        </a>
+        <button type="button" class="copy-source" data-copy-source="${escape(url.href)}" aria-label="Copy source link: ${escape(title)}" title="Copy source link">${copyIcon}</button>
+      </div>
+      <details class="source-evidence">
+        <summary>View evidence <span>${quotes.size} ${quotes.size === 1 ? "excerpt" : "excerpts"}</span></summary>
+        ${[...quotes].map((quote) => `<figure><blockquote dir="auto">${escape(quote)}</blockquote><figcaption><button type="button" data-copy-quote>Copy quote</button></figcaption></figure>`).join("")}
+        <a class="source-address" href="${escape(url.href)}" target="_blank" rel="noopener noreferrer" dir="ltr">${escape(url.href)}</a>
+      </details>
+    </li>`;
+    })
+    .join("");
+}
+
+/** Copy the original content; denied clipboard access must never report success. */
+async function copyResult(text, button, label) {
+  const key = resultKey;
+  button.disabled = true;
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    copied = true;
+  } catch {
+    const input = document.createElement("textarea");
+    input.value = text;
+    input.setAttribute("aria-label", "Content to copy");
+    input.style.cssText = "position:fixed;left:-9999px;top:0";
+    document.body.append(input);
+    input.select();
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      /* Show the manual-copy hint below. */
+    }
+    input.remove();
+    button.focus({ preventScroll: true });
+  } finally {
+    button.disabled = false;
+  }
+  if (key !== resultKey) return;
+  button.dataset.copied = String(copied);
+  if (button.id === "copy-answer")
+    button.querySelector("span").textContent = copied
+      ? "Copied"
+      : "Copy answer";
+  $("result-copy-status").textContent = copied
+    ? `${label} copied to clipboard.`
+    : "Could not access the clipboard. Select the text and copy it manually.";
+}
+
+$("task-result").addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  if (button.id === "copy-answer")
+    void copyResult(state.answer, button, "Answer");
+  else if (button.hasAttribute("data-copy-source"))
+    void copyResult(button.dataset.copySource, button, "Source link");
+  else if (button.hasAttribute("data-copy-code"))
+    void copyResult(
+      button.closest(".result-code").querySelector("code").textContent,
+      button,
+      "Code",
+    );
+  else if (button.hasAttribute("data-copy-quote"))
+    void copyResult(
+      button.closest("figure").querySelector("blockquote").textContent,
+      button,
+      "Quote",
+    );
+});
+
 function render() {
   if (!state) return;
   const [phase, title, detail] = presentation();
@@ -459,25 +597,7 @@ function render() {
   $("result-summary").textContent = state.history.length
     ? `${actionTitle(state.history.at(-1), state.history.at(-1).text)}. ${resultFor(state.history.length)}.`
     : "No actions yet. Choosing an action does not execute it.";
-  $("task-result").hidden = !state.answer;
-  $("answer").textContent = state.answer || "";
-  $("answer-sources").replaceChildren(
-    ...(state.answer
-      ? state.completion_reviews?.at(-1)?.evidence || []
-      : []
-    ).map((source) => {
-      const item = document.createElement("li");
-      const link = document.createElement("a");
-      link.textContent = source.quote;
-      if (/^https?:\/\//i.test(source.url)) {
-        link.href = source.url;
-        link.target = "_blank";
-        link.rel = "noreferrer";
-      }
-      item.append(link);
-      return item;
-    }),
-  );
+  renderResult();
   $("step-count").textContent =
     `${state.history.length} actions · ${seconds(state.elapsed_ms || 0)}`;
   const usage = state.usage;

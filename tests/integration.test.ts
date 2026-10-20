@@ -339,6 +339,8 @@ test("inspector saves private settings and drives a complete task through its co
   const state = await (await fetch(`${inspector.url}/api/state`)).json();
   expect(state.page.text).toContain("Results: Lisbon / Design");
   expect(state.history).toHaveLength(3);
+  expect(state.answer_html).toContain("<p");
+  expect(await page.locator("#answer").textContent()).toBe(state.answer);
   expect(state.pointer).toMatchObject({
     phase: "release",
     label: "Search hotels",
