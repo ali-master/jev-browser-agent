@@ -178,5 +178,17 @@ test("inspector runs the lab separately, renders labels safely and exports repor
   );
   expect(snapshot.status).toBe("idle");
   expect(snapshot.evaluation.reports).toHaveLength(1);
+  await page.locator(".run-options summary").click();
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const width of [390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 960 });
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+    }
+  }
   expect(errors).toEqual([]);
 }, 20000);

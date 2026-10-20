@@ -1598,6 +1598,9 @@ footer {
 .run-options textarea {
   width: 100%;
 }
+.run-options .overlay-control {
+  white-space: normal;
+}
 #structured-result {
   margin-top: 24px;
 }
@@ -1611,6 +1614,7 @@ footer {
 .lab-controls label {
   display: grid;
   gap: 6px;
+  font-size: 13px;
 }
 #evaluation-repeat {
   width: 80px;
@@ -1657,6 +1661,7 @@ footer {
 }
 .settings-grid input:not([type="checkbox"]),
 .settings-grid textarea,
+.lab-controls input,
 #start-url {
   width: 100%;
   border: 1px solid var(--input);
