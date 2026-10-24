@@ -10,6 +10,7 @@ let reviewStep = null,
   livePointer = null,
   historyKey = "";
 let resultKey = "";
+let pointerPose = null;
 const stopped = () =>
   ["done", "blocked", "error", "closed"].includes(state?.status);
 const escape = (value) =>
@@ -898,6 +899,7 @@ function renderBrowser() {
   renderPointer();
 }
 
+/** Keep the visible hotspot aligned with the browser while animating only its decoration. */
 function renderPointer() {
   const pointer = livePointer;
   const node = $("agent-pointer");
@@ -909,22 +911,63 @@ function renderPointer() {
     pointer.run_id !== state?.run_id ||
     pointer.url !== url ||
     $("screenshot").hidden;
-  if (node.hidden) return;
-  node.style.left = `${(100 * pointer.x) / pointer.w}%`;
-  node.style.top = `${(100 * pointer.y) / pointer.h}%`;
+  if (node.hidden) {
+    pointerPose = null;
+    return;
+  }
+  const viewport = $("viewport");
+  const width = viewport.clientWidth,
+    height = viewport.clientHeight;
+  // Screenshots are contained, so account for letterboxing as well as responsive scaling.
+  const scale = Math.min(width / pointer.w, height / pointer.h);
+  const x = (width - pointer.w * scale) / 2 + pointer.x * scale;
+  const y = (height - pointer.h * scale) / 2 + pointer.y * scale;
+  const previous =
+    pointerPose?.run_id === pointer.run_id && pointerPose.url === pointer.url
+      ? pointerPose
+      : null;
+  const moving = pointer.phase === "move" && previous !== null;
+  let angle = previous?.angle ?? 0,
+    squeeze = 1;
+  if (moving) {
+    const dx = pointer.x - previous.x,
+      dy = pointer.y - previous.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance > 0.5) {
+      const direction = (Math.atan2(dy, dx) * 180) / Math.PI + 135;
+      angle += ((((direction - angle + 540) % 360) + 360) % 360) - 180;
+      squeeze = 1 - Math.min(distance / 600, 0.14);
+    }
+  } else angle = 0;
+  pointerPose = { ...pointer, angle };
+  node.dataset.moving = moving;
+  node.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  node.style.setProperty("--pointer-angle", `${angle}deg`);
+  node.style.setProperty("--pointer-squeeze", squeeze);
+  const right = x > width / 2;
+  node.style.setProperty(
+    "--pointer-label-width",
+    `${Math.max(0, Math.min(190, (right ? x : width - x) - 28))}px`,
+  );
   node.dataset.phase = pointer.phase;
-  node.dataset.edge = pointer.x > pointer.w * 0.7 ? "right" : "left";
-  node.dataset.bottom = pointer.y > pointer.h * 0.85;
-  const verb =
+  node.dataset.edge = right ? "right" : "left";
+  node.dataset.bottom = y > height - 80;
+  node.dataset.direction = pointer.deltaY < 0 ? "up" : "down";
+  $("pointer-status").textContent =
     pointer.phase === "scroll"
       ? pointer.deltaY < 0
-        ? "Scroll ↑"
-        : "Scroll ↓"
-      : pointer.phase === "press" || pointer.phase === "release"
-        ? "Act"
-        : "Agent";
-  $("pointer-label").textContent = `${verb} · ${pointer.label}`;
+        ? "Scroll up"
+        : "Scroll down"
+      : {
+          move: "Moving",
+          press: "Clicking",
+          release: "Clicked",
+          idle: "Ready",
+        }[pointer.phase];
+  $("pointer-target").textContent = pointer.label;
 }
+
+new ResizeObserver(renderPointer).observe($("viewport"));
 function resultFor(step) {
   const entry = state.history.find((h) => h.step === step);
   if (!entry) return "Before any actions";
