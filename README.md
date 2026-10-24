@@ -22,6 +22,7 @@ It runs Chromium through a Bun/TypeScript library, a CLI or a visual inspector. 
 | [Reusable workflows](#reusable-workflows)                 | Reuse verified actions for repeated tasks when the page and step still match. |
 | [Structured results](#structured-results)                 | Get JSON in your required shape, with source evidence for each field.         |
 | [Login profiles and secrets](#login-profiles-and-secrets) | Reuse a login and enter private values only into specified sites and fields.  |
+| [Cookies and storage](#cookies-and-storage)               | Set, replace or delete site data before a task starts.                        |
 | [Page filters](#page-filters)                             | Block ads or URLs and remove unwanted page elements before analysis.          |
 | [Frames and tabs](#frames-tabs-and-panels)                | Continue tasks inside frames, new tabs and scrollable panels.                 |
 | [Run memory](#memory-within-a-run)                        | Keep earlier page context and avoid repeating ineffective actions.            |
@@ -175,6 +176,28 @@ const options = {
 ```
 
 Set `SITE_PASSWORD` locally first. Secret runs disable screenshots, pointer events and workflow recording/replay. They cannot use vision or WebMCP. Use trusted sites; transformed secret values may not be recognized by redaction.
+
+### Cookies and storage
+
+Open **Run options → Site data**, choose **Cookie**, **localStorage** or **sessionStorage**, then enter the site origin, name and value. Edit entries directly; **Remove** discards a draft, while **Delete this stored entry** removes that key when the task starts. Cookie options include path, expiry, Secure, HttpOnly and SameSite.
+
+Library options:
+
+```ts
+const options = {
+  siteData: {
+    cookies: [{ origin: "https://example.com", name: "language", value: "en" }],
+    localStorage: { "https://example.com": { theme: "dark", obsolete: null } },
+    sessionStorage: { "https://example.com": { step: "1" } },
+  },
+};
+```
+
+CLI: `--site-data .jev/site-data.json`, with the inner `siteData` object in that file. Values are strings; `null` deletes a key, while `""` stores an empty value. Cookie expiry is Unix seconds, subject to browser limits; omit it for a session cookie.
+
+Entries override matching profile data before the first page loads. Later changes made by the site are preserved. Storage uses exact origins; cookies use a host and path, excluding subdomains but shared across ports. Session storage is initialized in the first task tab; new tabs follow normal browser behavior. Profiles persist permitted cookies and localStorage, but not sessionStorage.
+
+Up to 100 entries, 20 origins and 64 KiB per run. Inspector drafts clear after a successful start and are not saved in settings. Keep JSON files private; values displayed by a site can appear in model prompts and recordings.
 
 ### Page filters
 

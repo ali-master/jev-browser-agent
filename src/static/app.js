@@ -382,6 +382,228 @@ $("secret-list").addEventListener("click", (event) => {
   }
 });
 
+const siteDataCards = () => [...$("site-data-list").children];
+const siteField = (card, name) =>
+  card.querySelector(`[data-site-field="${name}"]`);
+let nextSiteDataId = 0;
+
+/** Keep empty strings distinct from deletion, and preserve literal storage keys. */
+function readSiteData() {
+  if (!siteDataCards().length) return undefined;
+  const data = {
+    cookies: [],
+    localStorage: Object.create(null),
+    sessionStorage: Object.create(null),
+  };
+  for (const card of siteDataCards()) {
+    const origin = secretOrigin(siteField(card, "origin").value);
+    const name = siteField(card, "name").value;
+    const value = siteField(card, "delete").checked
+      ? null
+      : siteField(card, "value").value;
+    if (card.dataset.kind === "cookies") {
+      const secure = siteField(card, "secure").value;
+      const expires = siteField(card, "expires").value;
+      data.cookies.push({
+        origin,
+        name,
+        value,
+        path: siteField(card, "path").value,
+        httpOnly: siteField(card, "httpOnly").checked,
+        sameSite: siteField(card, "sameSite").value,
+        ...(secure ? { secure: secure === "true" } : {}),
+        ...(expires ? { expires: Number(expires) } : {}),
+      });
+    } else
+      (data[card.dataset.kind][origin] ??= Object.create(null))[name] = value;
+  }
+  return data;
+}
+
+/** Validate scope and duplicates locally before sending any browser setup request. */
+function validateSiteDataForm() {
+  const seen = new Map();
+  const working = Boolean(busy || state?.server_busy);
+  for (const [index, card] of siteDataCards().entries()) {
+    const cookie = card.dataset.kind === "cookies";
+    const removing = siteField(card, "delete").checked;
+    const origin = siteField(card, "origin"),
+      name = siteField(card, "name"),
+      value = siteField(card, "value");
+    for (const input of card.querySelectorAll("input, select")) {
+      input.setCustomValidity("");
+      input.disabled =
+        working ||
+        (!cookie && !!input.closest(".site-cookie-options")) ||
+        (removing && input === value);
+    }
+    for (const button of card.querySelectorAll("button"))
+      button.disabled = working;
+    card.dataset.deleting = String(removing);
+    const site = secretOrigin(origin.value);
+    if (origin.value && !site)
+      origin.setCustomValidity(
+        "Enter an exact HTTP(S) origin without a path, query or login details.",
+      );
+    if (
+      cookie &&
+      name.value &&
+      !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name.value)
+    )
+      name.setCustomValidity(
+        "Use an HTTP token for the cookie name; no spaces or separators.",
+      );
+    if (
+      cookie &&
+      !removing &&
+      (!/^[\x21\x23-\x2b\x2d-\x3a\x3c-\x5b\x5d-\x7e]*$/.test(value.value) ||
+        name.value.length + value.value.length > 4096)
+    )
+      value.setCustomValidity(
+        "Use a URL-encoded cookie value. Name and value must fit in 4,096 bytes.",
+      );
+    const path = siteField(card, "path");
+    if (
+      cookie &&
+      (!path.value.startsWith("/") || /[\x00-\x20\x7f;]/.test(path.value))
+    )
+      path.setCustomValidity(
+        "Cookie paths must start with / and contain no spaces or semicolons.",
+      );
+    if (cookie && site && !removing) {
+      const secure =
+        siteField(card, "secure").value === "true" ||
+        (!siteField(card, "secure").value && site.startsWith("https:"));
+      if (
+        (secure && !site.startsWith("https:")) ||
+        (siteField(card, "sameSite").value === "None" && !secure) ||
+        (/^__(Secure|Host|Http)-/.test(name.value) && !secure) ||
+        (name.value.startsWith("__Host-") && path.value !== "/") ||
+        (/^__(Http|Host-Http)-/.test(name.value) &&
+          !siteField(card, "httpOnly").checked)
+      )
+        name.setCustomValidity(
+          "Check cookie security: Secure needs HTTPS, SameSite=None needs Secure, and __Host-/__Http- prefixes need their required flags.",
+        );
+    }
+    if (site && name.value) {
+      const key = JSON.stringify([
+        card.dataset.kind,
+        cookie ? new URL(site).hostname : site,
+        cookie ? path.value : "",
+        name.value,
+      ]);
+      if (seen.has(key)) {
+        name.setCustomValidity(
+          "This site, type and name already have an entry.",
+        );
+        seen.get(key).setCustomValidity(name.validationMessage);
+      } else seen.set(key, name);
+    }
+    const label = `${cookie ? "Cookie" : card.dataset.kind} ${String(index + 1).padStart(2, "0")}`;
+    card.querySelector("h4").textContent = label;
+    card
+      .querySelector('[data-site-action="remove"]')
+      .setAttribute("aria-label", `Remove ${label}`);
+    card
+      .querySelector('[data-site-action="reveal"]')
+      .setAttribute(
+        "aria-label",
+        `${value.type === "password" ? "Show" : "Hide"} ${label} value`,
+      );
+  }
+  for (const card of siteDataCards()) {
+    const invalid = [...card.querySelectorAll("input, select")].find(
+      (input) => !input.disabled && !input.validity.valid,
+    );
+    const error = card.querySelector(":scope > .secret-error");
+    error.hidden = !invalid || !card.dataset.touched;
+    error.textContent = error.hidden ? "" : invalid.validationMessage;
+    for (const input of card.querySelectorAll("input, select"))
+      input.setAttribute(
+        "aria-invalid",
+        String(
+          !!card.dataset.touched && !input.disabled && !input.validity.valid,
+        ),
+      );
+  }
+  const count = siteDataCards().length;
+  $("site-data-empty").hidden = count > 0;
+  $("site-data-count").textContent = count
+    ? `${count} / 100 entries`
+    : "No entries added";
+  for (const button of document.querySelectorAll("[data-site-add]"))
+    button.disabled = working || count >= 100;
+}
+
+/** Add an editable entry using native controls; values never enter saved inspector settings. */
+$("site-data").addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button || button.disabled) return;
+  if (button.dataset.siteAdd) {
+    const card =
+      $("site-data-template").content.firstElementChild.cloneNode(true);
+    card.dataset.kind = button.dataset.siteAdd;
+    const id = `site-data-${++nextSiteDataId}`;
+    card.querySelector("h4").id = `${id}-title`;
+    card.setAttribute("aria-labelledby", `${id}-title`);
+    card.querySelector(":scope > .secret-error").id = `${id}-error`;
+    for (const input of card.querySelectorAll("input, select"))
+      input.setAttribute("aria-describedby", `${id}-error`);
+    siteField(card, "value").id = `${id}-value`;
+    card.querySelector("[data-site-value-label]").htmlFor = `${id}-value`;
+    card
+      .querySelector('[data-site-action="reveal"]')
+      .setAttribute("aria-controls", `${id}-value`);
+    card.querySelector(".site-cookie-options").hidden =
+      card.dataset.kind !== "cookies";
+    $("site-data-list").append(card);
+    validateSiteDataForm();
+    siteField(card, "origin").focus();
+  } else if (button.dataset.siteAction) {
+    const card = button.closest(".site-data-card"),
+      value = siteField(card, "value");
+    if (button.dataset.siteAction === "remove") {
+      value.value = "";
+      const next = card.nextElementSibling || card.previousElementSibling;
+      card.remove();
+      (next
+        ? siteField(next, "origin")
+        : document.querySelector("[data-site-add]")
+      ).focus();
+    } else {
+      const reveal = value.type === "password";
+      value.type = reveal ? "text" : "password";
+      button.textContent = reveal ? "Hide" : "Show";
+      button.setAttribute("aria-pressed", String(reveal));
+    }
+    validateSiteDataForm();
+  }
+});
+for (const event of ["input", "change", "invalid"])
+  $("site-data").addEventListener(
+    event,
+    (event) => {
+      const card = event.target.closest(".site-data-card");
+      if (!card) return;
+      card.dataset.touched = "true";
+      if (event.type === "invalid") {
+        $("site-data").closest("details").open = true;
+        if (event.target.closest(".site-cookie-options"))
+          event.target.closest(".site-cookie-options").open = true;
+      }
+      validateSiteDataForm();
+    },
+    true,
+  );
+
+/** Discard submitted drafts so a subsequent task cannot silently reuse session data. */
+function clearSiteData() {
+  for (const card of siteDataCards()) siteField(card, "value").value = "";
+  $("site-data-list").replaceChildren();
+  validateSiteDataForm();
+}
+
 function applyState(next) {
   if (next.run_id === state?.run_id && next.revision < state.revision) return;
   if (next.run_id !== state?.run_id) {
@@ -433,6 +655,7 @@ function controls() {
   for (const input of $("secret-bindings").querySelectorAll("input, button"))
     input.disabled = working;
   $("add-secret").disabled = Boolean(working || secretCards().length >= 20);
+  validateSiteDataForm();
   $("choose").disabled = working || !live;
   $("execute").disabled = working || !state?.decision || !live;
   $("auto").disabled = working || !live;
@@ -1155,7 +1378,14 @@ async function runAutomatically() {
 $("task-form").addEventListener("submit", (event) => {
   event.preventDefault();
   validateSecretForm();
+  validateSiteDataForm();
   if (!$("task-form").reportValidity()) return;
+  for (const card of siteDataCards()) {
+    siteField(card, "value").type = "password";
+    const button = card.querySelector('[data-site-action="reveal"]');
+    button.textContent = "Show";
+    button.setAttribute("aria-pressed", "false");
+  }
   for (const card of secretCards()) {
     secretInput(card, "value").type = "password";
     const button = card.querySelector("[data-secret-action=reveal]");
@@ -1177,6 +1407,7 @@ $("task-form").addEventListener("submit", (event) => {
         ? { profile: $("profile-name").value.trim() }
         : {}),
       ...(secretCards().length ? { secrets: readSecrets() } : {}),
+      ...(siteDataCards().length ? { siteData: readSiteData() } : {}),
       ...($("output-schema").value.trim()
         ? { outputSchema: JSON.parse($("output-schema").value) }
         : {}),
@@ -1190,6 +1421,7 @@ $("task-form").addEventListener("submit", (event) => {
         : {}),
     });
     clearSecrets();
+    clearSiteData();
     document.querySelector(".toolbar").scrollIntoView({ block: "start" });
     if ($("run-mode").value === "auto") await runAutomatically();
   }, "Opening a fresh browser…");

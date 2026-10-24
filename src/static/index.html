@@ -458,7 +458,7 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
             <span class="settings-toggle-copy">
               <strong id="run-options-title">Run options</strong>
               <span id="run-options-hint"
-                >Login profiles, secrets, workflows &amp; structured
+                >Cookies, storage, secrets, workflows &amp; structured
                 results</span
               >
             </span>
@@ -485,6 +485,179 @@ Find a Design stay in Lisbon with Free cancellation and open Casa Flora.</textar
           >
           <label for="profile-name">Login profile · optional name</label>
           <input id="profile-name" placeholder="research" autocomplete="off" />
+          <section
+            id="site-data"
+            class="secrets-panel"
+            aria-labelledby="site-data-title"
+          >
+            <div class="secrets-heading">
+              <span class="secrets-icon" aria-hidden="true">
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <ellipse cx="12" cy="5" rx="8" ry="3" />
+                  <path d="M4 5v7c0 4 16 4 16 0V5M4 12v7c0 4 16 4 16 0v-7" />
+                </svg>
+              </span>
+              <div class="secrets-intro">
+                <div class="secrets-title-row">
+                  <h3 id="site-data-title">Site data</h3>
+                  <span class="secrets-badge">Before the task starts</span>
+                </div>
+                <p>
+                  Set up a session, a preference or a starting state for each
+                  site.
+                </p>
+              </div>
+            </div>
+            <div class="site-data-actions" aria-label="Add site data">
+              <button type="button" data-site-add="cookies">+ Cookie</button>
+              <button type="button" data-site-add="localStorage">
+                + localStorage
+              </button>
+              <button type="button" data-site-add="sessionStorage">
+                + sessionStorage
+              </button>
+            </div>
+            <div id="site-data-empty" class="secrets-empty">
+              <strong>Give the browser a head start.</strong>
+              <p>
+                Add or replace a value, or delete a key restored from a login
+                profile. Each entry belongs to a site you specify.
+              </p>
+            </div>
+            <div id="site-data-list"></div>
+            <div class="secrets-footer">
+              <p>
+                Drafts clear after a successful start. Cookies and localStorage
+                can persist in a login profile; sessionStorage stays in the
+                first task tab. Page content may appear in prompts and
+                recordings.
+              </p>
+              <span id="site-data-count" role="status">No entries added</span>
+            </div>
+          </section>
+          <template id="site-data-template">
+            <article class="site-data-card">
+              <div class="secret-card-heading">
+                <h4>Site data</h4>
+                <button
+                  type="button"
+                  class="secret-remove"
+                  data-site-action="remove"
+                >
+                  Remove
+                </button>
+              </div>
+              <div class="secret-fields">
+                <label class="secret-field"
+                  >Site origin<input
+                    data-site-field="origin"
+                    type="url"
+                    placeholder="https://example.com"
+                    required
+                    autocomplete="off"
+                    spellcheck="false"
+                  /><span class="secret-hint"
+                    >Include the protocol and port, without a page path.</span
+                  ></label
+                >
+                <label class="secret-field"
+                  >Name<input
+                    data-site-field="name"
+                    maxlength="256"
+                    placeholder="theme"
+                    required
+                    autocomplete="off"
+                    spellcheck="false"
+                /></label>
+                <div class="secret-field site-data-value">
+                  <label data-site-value-label>Value</label>
+                  <div class="secret-value-control">
+                    <input
+                      data-site-field="value"
+                      type="password"
+                      maxlength="8192"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="Empty is a valid value"
+                    /><button
+                      type="button"
+                      data-site-action="reveal"
+                      aria-pressed="false"
+                    >
+                      Show
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <label class="overlay-control site-data-delete"
+                ><input data-site-field="delete" type="checkbox" /> Delete this
+                stored entry when starting</label
+              >
+              <details class="site-cookie-options">
+                <summary>Cookie options · path, expiry &amp; security</summary>
+                <div class="secret-fields">
+                  <label class="secret-field"
+                    >Path<input
+                      data-site-field="path"
+                      value="/"
+                      maxlength="1024"
+                      required
+                      autocomplete="off"
+                  /></label>
+                  <label class="secret-field"
+                    >Expires · Unix seconds<input
+                      data-site-field="expires"
+                      type="number"
+                      min="-1"
+                      max="253402300799"
+                      step="1"
+                      placeholder="Session cookie"
+                      autocomplete="off"
+                  /></label>
+                  <label class="secret-field"
+                    >Transport<select
+                      data-site-field="secure"
+                      aria-label="Transport"
+                      class="task-select"
+                    >
+                      <option value="">Match site protocol</option>
+                      <option value="true">HTTPS only · Secure</option>
+                      <option value="false">HTTP and HTTPS</option>
+                    </select></label
+                  >
+                  <label class="secret-field"
+                    >SameSite<select
+                      data-site-field="sameSite"
+                      aria-label="SameSite"
+                      class="task-select"
+                    >
+                      <option value="Lax">Lax</option>
+                      <option value="Strict">Strict</option>
+                      <option value="None">None · requires Secure</option>
+                    </select></label
+                  >
+                  <label class="overlay-control"
+                    ><input data-site-field="httpOnly" type="checkbox" />
+                    HttpOnly · hide from page JavaScript</label
+                  >
+                </div>
+                <p class="muted">
+                  Cookies use the exact host and path, without subdomains. Ports
+                  do not isolate cookies.
+                </p>
+              </details>
+              <p class="secret-error" role="status" hidden></p>
+            </article>
+          </template>
           <label for="webmcp-permissions"
             >WebMCP · optional tool permissions JSON</label
           >

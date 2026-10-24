@@ -2021,19 +2021,22 @@ footer {
   font-size: 12px;
   line-height: 1.6;
 }
-#secret-list {
+#secret-list,
+#site-data-list {
   display: grid;
   gap: 12px;
   padding: 0 18px;
 }
-.secret-card {
+.secret-card,
+.site-data-card {
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--card);
 }
-.secret-card:last-child {
+.secret-card:last-child,
+.site-data-card:last-child {
   margin-bottom: 18px;
 }
 .secret-card-heading {
@@ -2167,6 +2170,43 @@ footer {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
+.site-data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 18px 18px;
+}
+.site-data-actions button {
+  font-size: 12px;
+}
+.site-data-value {
+  grid-column: 1 / -1;
+}
+.site-data-delete {
+  margin: 16px 0;
+}
+.site-cookie-options {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.site-cookie-options > summary {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.site-cookie-options .secret-fields {
+  margin-top: 16px;
+}
+.site-data-card .task-select {
+  display: flex;
+  width: 100%;
+}
+.site-data-card > .secret-error {
+  margin-bottom: 0;
+}
+.site-data-card[data-deleting="true"] .site-data-value {
+  opacity: 0.55;
+}
 @media (max-width: 600px) {
   .secrets-heading {
     flex-wrap: wrap;
@@ -2181,10 +2221,12 @@ footer {
     margin: 0 14px 14px;
     padding: 20px 12px;
   }
-  #secret-list {
+  #secret-list,
+  #site-data-list {
     padding: 0 10px;
   }
-  .secret-card {
+  .secret-card,
+  .site-data-card {
     padding: 12px;
   }
   .secret-fields {
