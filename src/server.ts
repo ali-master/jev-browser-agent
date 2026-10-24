@@ -2,6 +2,7 @@ import { Agent } from "./agent";
 import { workflowOptions } from "./workflow";
 import { outputCSV, validateSchema } from "./output";
 import { ProfileStore, SecretVault } from "./credentials";
+import { siteDataOptions } from "./site-data";
 import { webMCPOptions } from "./webmcp";
 import {
   evaluateSuite,
@@ -208,7 +209,7 @@ export function startServer(
     hostname: "127.0.0.1",
     port: options.port ?? 8766,
     idleTimeout: 0,
-    maxRequestBodySize: 32_768,
+    maxRequestBodySize: 131_072,
     async fetch(request) {
       const origin = `http://127.0.0.1:${server.port}`;
       if (
@@ -384,6 +385,7 @@ export function startServer(
                 : { name: body.profile as string };
             if (profile) new ProfileStore(profile, url);
             new SecretVault(body.secrets);
+            const siteData = siteDataOptions(body.siteData);
             const webMCP = webMCPOptions(body.webMCP);
             if (webMCP && (body.secrets || body.workflow))
               throw new Error(
@@ -427,6 +429,7 @@ export function startServer(
               vision: body.vision === true,
               webMCP,
               profile,
+              siteData,
               secrets: body.secrets as
                 import("./credentials").Secrets | undefined,
               outputSchema: body.outputSchema as

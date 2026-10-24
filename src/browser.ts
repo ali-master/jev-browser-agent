@@ -10,6 +10,12 @@ import type {
 import { httpUrl } from "./config";
 import { ProfileStore, SecretVault } from "./credentials";
 import type { ProfileOptions, Secrets } from "./credentials";
+import {
+  initialSiteData,
+  seedSessionStorage,
+  siteDataOptions,
+  type SiteData,
+} from "./site-data";
 import type { VisualScreen, VisualPoint } from "./vision";
 import { PageTools, webMCPOptions, type WebMCPOptions } from "./webmcp";
 import {
@@ -46,6 +52,8 @@ export interface BrowserOptions {
   webMCP?: WebMCPOptions;
   profile?: ProfileOptions;
   secrets?: Secrets;
+  /** Initial cookies and origin-scoped storage, applied after restoring a login profile. */
+  siteData?: SiteData;
   filters?: PageFilters;
   headless?: boolean;
   cdpUrl?: string;
@@ -119,6 +127,7 @@ export class Browser implements BrowserDriver {
     options: BrowserOptions = {},
   ): Promise<Browser> {
     const targetUrl = httpUrl(url, "Page URL");
+    const siteData = siteDataOptions(options.siteData);
     const vault = new SecretVault(options.secrets);
     const webmcp = webMCPOptions(options.webMCP);
     if (webmcp && vault.enabled)
@@ -127,7 +136,7 @@ export class Browser implements BrowserDriver {
     const profile = options.profile
       ? new ProfileStore(options.profile, targetUrl)
       : undefined;
-    const storageState = await profile?.load();
+    const storageState = initialSiteData(await profile?.load(), siteData);
     const filters = pageFilters(options.filters);
     const blockedUrl = blockedUrlMatcher(filters.blockedUrls);
     if (blockedUrl(targetUrl))
@@ -227,6 +236,7 @@ export class Browser implements BrowserDriver {
       }
       if (options.headless === false) await page.bringToFront();
       const session = await prepare(page);
+      await seedSessionStorage(page, siteData);
       await page.goto(targetUrl, {
         waitUntil: "commit",
         timeout: 30_000,

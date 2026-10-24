@@ -25,6 +25,7 @@ const help = `Jev Browser Agent (Bun)
   --profile NAME              Restore/save an encrypted local login profile
   --allow-origin ORIGIN       Additional profile origin (repeatable)
   --secrets PATH              Private JSON secret bindings; never sent to models
+  --site-data PATH            Initial cookies, localStorage and sessionStorage JSON
   --vision                    Optional canvas fallback using a multimodal chat helper
   --webmcp PATH               JSON permissions: {"allowedTools":{"https://site.example":["search"]}}
 
@@ -60,6 +61,7 @@ try {
       profile: { type: "string" },
       "allow-origin": { type: "string", multiple: true },
       secrets: { type: "string" },
+      "site-data": { type: "string" },
       vision: { type: "boolean" },
       webmcp: { type: "string" },
       suite: { type: "string" },
@@ -240,6 +242,13 @@ try {
             .json()
             .catch(() => {
               throw new Error("Invalid secrets JSON file.");
+            })
+        : undefined,
+      siteData: values["site-data"]
+        ? await Bun.file(values["site-data"])
+            .json()
+            .catch(() => {
+              throw new Error("Invalid site data JSON file.");
             })
         : undefined,
       outputSchema: values.schema
