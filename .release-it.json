@@ -7,7 +7,8 @@
     "push": true
   },
   "npm": {
-    "publishPackageManager": "bun"
+    "publishPackageManager": "bun",
+    "publishPath": ""
   },
   "hooks": {
     "after:bump": "bun install --lockfile-only --ignore-scripts"
